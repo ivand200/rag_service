@@ -1,0 +1,61 @@
+[project]
+name = "rag-service-backend"
+version = "0.1.0"
+description = "Backend API and worker for the RAG Service MVP."
+requires-python = ">=3.12"
+dependencies = [
+  "aioboto3>=15.0.0",
+  "aiosqlite>=0.21.0",
+  "alembic>=1.15.2",
+  "fastapi>=0.115.12",
+  "greenlet>=3.1.1",
+  "httpx>=0.28.1",
+  "openai>=1.76.0",
+  "pgvector>=0.3.6",
+  "psycopg[binary]>=3.2.6",
+  "PyJWT[crypto]>=2.9.0",
+  "pydantic>=2.11.3",
+  "pydantic-ai>=0.0.48",
+  "pydantic-settings>=2.8.1",
+  "pypdf>=5.4.0",
+  "python-multipart>=0.0.20",
+  "sqlalchemy>=2.0.40",
+  "uvicorn[standard]>=0.34.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.15.0",
+  "pytest>=8.3.5",
+  "pytest-cov>=6.1.1",
+  "pytest-mock>=3.14.0",
+  "ruff>=0.11.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+ignore = ["B008"]
+select = ["E", "F", "I", "B", "UP", "N"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.hatch.build.targets.sdist]
+include = ["app", "alembic", "alembic.ini", "pyproject.toml"]
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"

@@ -1,0 +1,5 @@
+from __future__ import annotations
+
+EMBEDDING_VECTOR_DIMENSIONS = 1024
+SINGLETON_WORKSPACE_ID = 1
+SINGLETON_WORKSPACE_NAME = "Personal Workspace"

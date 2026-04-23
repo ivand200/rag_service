@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Warm Workspace Example</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f7f2ea;
+        --paper-strong: #fbf8f2;
+        --panel: rgba(255, 252, 247, 0.92);
+        --line: #e7ddd0;
+        --line-strong: #d8c8b2;
+        --ink: #2c2721;
+        --muted: #7b7268;
+        --green: #476f4e;
+        --green-soft: #edf5ee;
+        --amber: #c8952d;
+        --amber-soft: #fbf3df;
+        --red: #b4534a;
+        --red-soft: #fbe8e5;
+        --shadow: 0 24px 60px rgba(83, 60, 28, 0.08);
+        --radius-xl: 28px;
+        --radius-lg: 22px;
+        --radius-md: 16px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top right, rgba(215, 197, 172, 0.26), transparent 24%),
+          linear-gradient(180deg, #faf6ef 0%, var(--paper) 100%);
+        color: var(--ink);
+        font-family: Inter, "Segoe UI", sans-serif;
+      }
+
+      .shell {
+        min-height: 100vh;
+      }
+
+      .workspace {
+        width: 100%;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 28px 18px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(251, 247, 240, 0.72);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: var(--green);
+        color: white;
+        font-weight: 700;
+      }
+
+      .brand h1,
+      .brand p {
+        margin: 0;
+      }
+
+      .brand h1 {
+        font-size: 18px;
+      }
+
+      .brand p {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .status-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--paper-strong);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 264px minmax(0, 1fr);
+        min-height: 760px;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-right: 1px solid var(--line);
+        background: rgba(248, 243, 235, 0.82);
+      }
+
+      .sidebar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px 12px;
+        flex-shrink: 0;
+      }
+
+      .sidebar-title {
+        margin: 0;
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .icon-btn {
+        border: 1px solid var(--line);
+        background: white;
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        color: var(--ink);
+        font-size: 18px;
+      }
+
+      .upload-card,
+      .doc-card,
+      .composer,
+      .answer-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: var(--panel);
+        box-shadow: 0 10px 24px rgba(80, 56, 20, 0.04);
+      }
+
+      .upload-card {
+        margin: 0 12px 12px;
+        border-style: dashed;
+        padding: 11px 13px;
+        flex-shrink: 0;
+      }
+
+      .upload-card h2,
+      .upload-card p,
+      .doc-card h3,
+      .doc-card p,
+      .answer-card p,
+      .sources p {
+        margin: 0;
+      }
+
+      .upload-card h2 {
+        font-size: 16px;
+        margin-bottom: 6px;
+      }
+
+      .upload-card p {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .doc-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .doc-card {
+        padding: 9px 11px;
+        overflow: hidden;
+      }
+
+      .doc-card h3 {
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.45;
+        margin-bottom: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .doc-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 10px;
+        font-weight: 600;
+        border: 1px solid transparent;
+      }
+
+      .ready {
+        background: var(--green-soft);
+        color: var(--green);
+        border-color: rgba(71, 111, 78, 0.18);
+      }
+
+      .processing {
+        background: var(--amber-soft);
+        color: var(--amber);
+        border-color: rgba(200, 149, 45, 0.18);
+      }
+
+      .failed {
+        background: var(--red-soft);
+        color: var(--red);
+        border-color: rgba(180, 83, 74, 0.18);
+      }
+
+      .main {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        background: linear-gradient(180deg, rgba(255, 252, 247, 0.16), rgba(247, 242, 234, 0.34));
+      }
+
+      .conversation {
+        padding: 18px 44px 14px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .thread {
+        width: min(100%, 720px);
+      }
+
+      .question {
+        display: inline-block;
+        margin: 0 0 14px auto;
+        padding: 14px 18px;
+        max-width: 76%;
+        border-radius: 18px;
+        background: #23201d;
+        color: #f7f2ea;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+
+      .answer-card {
+        padding: 20px 22px 18px;
+      }
+
+      .answer-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .answer-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      .answer-text {
+        font-size: 17px;
+        line-height: 1.7;
+      }
+
+      .sources {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .sources-label {
+        margin-bottom: 12px;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .source-item {
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        gap: 12px;
+      }
+
+      .source-item + .source-item {
+        margin-top: 12px;
+      }
+
+      .source-index {
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: #f1ebe0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .source-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .source-quote {
+        padding-left: 12px;
+        border-left: 2px solid var(--line);
+        color: var(--muted);
+        font-style: italic;
+        line-height: 1.55;
+      }
+
+      .composer-wrap {
+        padding: 0 44px 22px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .composer {
+        width: min(100%, 720px);
+        padding: 16px;
+      }
+
+      .composer textarea {
+        width: 100%;
+        min-height: 88px;
+        resize: none;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        line-height: 1.5;
+      }
+
+      .composer-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 10px;
+      }
+
+      .composer-note {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .send-btn {
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 18px;
+        background: #c8d7ca;
+        color: #315439;
+        font-weight: 700;
+      }
+
+      @media (max-width: 1080px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      @media (max-width: 720px) {
+        .shell {
+          padding: 14px;
+        }
+
+        .topbar,
+        .conversation,
+        .composer-wrap {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+
+        .question {
+          max-width: 92%;
+        }
+
+        .composer-footer,
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="workspace">
+        <header class="topbar">
+          <div class="brand">
+            <div class="brand-mark">L</div>
+            <div>
+              <h1>Lumen</h1>
+              <p>Research workspace</p>
+            </div>
+          </div>
+
+          <div class="status-row">
+            <span class="pill"><span class="dot" style="color:#476f4e"></span>3 ready</span>
+            <span class="pill"><span class="dot" style="color:#c8952d"></span>1 indexing</span>
+            <span class="pill"><span class="dot" style="color:#b4534a"></span>1 failed</span>
+          </div>
+        </header>
+
+        <div class="layout">
+          <aside class="sidebar">
+            <div class="sidebar-header">
+              <p class="sidebar-title">Documents</p>
+              <button class="icon-btn" type="button">+</button>
+            </div>
+
+            <div class="upload-card">
+              <h2>Add files</h2>
+              <p>Upload `.pdf`, `.md`, and `.txt` files for grounded answers.</p>
+            </div>
+
+            <div class="doc-list">
+              <article class="doc-card">
+                <h3>Q4 2025 Earnings Report.pdf</h3>
+                <div class="doc-meta"><span class="badge ready">Ready</span><span>2h ago</span></div>
+              </article>
+
+              <article class="doc-card">
+                <h3>Competitive Analysis - Market Landscape.pdf</h3>
+                <div class="doc-meta"><span class="badge ready">Ready</span><span>5h ago</span></div>
+              </article>
+
+              <article class="doc-card">
+                <h3>Product Roadmap H1 2026.md</h3>
+                <div class="doc-meta"><span class="badge processing">Indexing</span><span>12m ago</span></div>
+              </article>
+
+              <article class="doc-card">
+                <h3>Investor Deck March 2026.pdf</h3>
+                <div class="doc-meta"><span class="badge failed">Failed</span><span>1d ago</span></div>
+              </article>
+            </div>
+          </aside>
+
+          <main class="main">
+            <section class="conversation">
+              <div class="thread">
+                <div class="question">How does our churn rate compare to the competitive landscape?</div>
+
+                <article class="answer-card">
+                  <div class="answer-meta">
+                    <span class="answer-brand"><span class="dot" style="color:#476f4e"></span>Lumen</span>
+                    <span class="badge processing">Partial match</span>
+                  </div>
+
+                  <p class="answer-text">
+                    I found relevant churn data in the Earnings Report: an annual rate of 8.2%, down
+                    from 11.4% the year prior. The Competitive Analysis does not include enough
+                    benchmark data for a direct comparison. Once the Customer Churn Study finishes
+                    indexing, I should be able to give a more grounded answer on positioning.
+                  </p>
+
+                  <div class="sources">
+                    <p class="sources-label">Sources</p>
+
+                    <div class="source-item">
+                      <div class="source-index">1</div>
+                      <div>
+                        <p class="source-title">Q4 2025 Earnings Report.pdf <span style="color:#9c9387;font-weight:500">p.19</span></p>
+                        <p class="source-quote">
+                          Annual net revenue churn improved to 8.2%, down from 11.4% in the prior
+                          year period, attributed to improved onboarding and expanded customer success coverage.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <div class="composer-wrap">
+              <form class="composer">
+                <textarea placeholder="Ask a question grounded in your documents..."></textarea>
+                <div class="composer-footer">
+                  <span class="composer-note">3 of 6 documents active</span>
+                  <button class="send-btn" type="button">Ask Lumen</button>
+                </div>
+              </form>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

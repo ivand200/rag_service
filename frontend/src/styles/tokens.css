@@ -1,0 +1,37 @@
+:root {
+  color-scheme: light;
+  --bg: #f3eadb;
+  --bg-alt: #efe3d2;
+  --bg-deep: #e0ceb5;
+  --panel: rgba(255, 251, 245, 0.9);
+  --panel-strong: #fffaf1;
+  --panel-muted: #f6efe3;
+  --panel-ink: #f0e3cf;
+  --line: rgba(90, 71, 53, 0.16);
+  --line-strong: rgba(90, 71, 53, 0.28);
+  --text: #2f241a;
+  --muted: #6f5e4c;
+  --accent: #8d5c2f;
+  --accent-strong: #6d431c;
+  --accent-soft: #dcc2a4;
+  --user-surface: #3f2d20;
+  --user-line: rgba(63, 45, 32, 0.55);
+  --grounded-surface: #f7efe1;
+  --grounded-line: rgba(125, 94, 56, 0.18);
+  --abstained-surface: #f8e7df;
+  --abstained-line: rgba(165, 95, 69, 0.24);
+  --ready: #3c6b4f;
+  --processing: #9b6427;
+  --pending: #7d5a35;
+  --danger: #9f4f3f;
+  --success: #3c6b4f;
+  --shadow-soft: 0 18px 40px rgba(93, 65, 34, 0.08);
+  --shadow-panel: 0 26px 60px rgba(88, 64, 40, 0.12);
+  --display-font: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  --body-font: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+  --radius-xl: 32px;
+  --radius-lg: 24px;
+  --radius-md: 18px;
+  --radius-sm: 14px;
+  --max-width: 1180px;
+}
