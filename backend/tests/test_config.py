@@ -79,3 +79,22 @@ def test_settings_allow_legacy_dashscope_provider_configuration() -> None:
 
     assert settings.provider_api_key == "legacy-key"
     assert settings.provider_base_url == "https://dashscope.example.test/v1"
+
+
+@pytest.mark.parametrize(
+    ("env_value", "expected"),
+    [
+        ("true", True),
+        ("false", False),
+    ],
+)
+def test_settings_parse_structured_retrieval_plan_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    env_value: str,
+    expected: bool,
+) -> None:
+    monkeypatch.setenv("ENABLE_STRUCTURED_RETRIEVAL_PLAN", env_value)
+
+    settings = Settings(openai_api_key="test-key", dashscope_api_key="")
+
+    assert settings.enable_structured_retrieval_plan is expected

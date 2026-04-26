@@ -5,15 +5,18 @@ import json
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from inspect import isawaitable
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict
 
 from app.config import Settings
 from app.db.constants import EMBEDDING_VECTOR_DIMENSIONS
 from app.db.models import ChatMessage
+from app.services.observability import get_logger, log_event
 
 EMBEDDING_PROVIDER_MAX_BATCH_SIZE = 10
+_LOGGER = get_logger(__name__)
 
 
 async def _maybe_await(value: object) -> Any:
@@ -81,6 +84,19 @@ class RetrievalPlan:
     broad: bool = False
 
 
+class RetrievalPlanProviderSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+    scope: Literal["focused", "broad"]
+
+
+class _StructuredRetrievalPlanError(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class ChatService:
     not_supported_token = "NOT_SUPPORTED"
 
@@ -116,14 +132,56 @@ class ChatService:
         message: str,
         history: Sequence[ChatMessage],
     ) -> RetrievalPlan:
+        messages = self._build_retrieval_plan_messages(
+            message=message,
+            history=history,
+            structured=self.settings.enable_structured_retrieval_plan,
+        )
+        if self.settings.enable_structured_retrieval_plan:
+            return await self._generate_structured_retrieval_plan(
+                message=message,
+                messages=messages,
+            )
+
         response = await _maybe_await(
             self.client.chat.completions.create(
                 model=self.settings.chat_model,
-                messages=self._build_retrieval_plan_messages(message=message, history=history),
+                messages=messages,
             )
         )
         content = response.choices[0].message.content or ""
         return _parse_retrieval_plan(content, fallback_message=message)
+
+    async def _generate_structured_retrieval_plan(
+        self,
+        *,
+        message: str,
+        messages: list[dict[str, str]],
+    ) -> RetrievalPlan:
+        parse = getattr(self.client.chat.completions, "parse", None)
+        if not callable(parse):
+            _log_structured_retrieval_plan_failure("missing_parse_method")
+            return fallback_retrieval_plan(message)
+
+        try:
+            response = await _maybe_await(
+                parse(
+                    model=self.settings.chat_model,
+                    messages=messages,
+                    response_format=RetrievalPlanProviderSchema,
+                )
+            )
+        except Exception as exc:
+            _log_structured_retrieval_plan_failure("provider_error", exc)
+            return fallback_retrieval_plan(message)
+
+        try:
+            parsed = _extract_structured_retrieval_plan(response)
+        except _StructuredRetrievalPlanError as exc:
+            _log_structured_retrieval_plan_failure(exc.reason)
+            return fallback_retrieval_plan(message)
+
+        return _provider_retrieval_plan_to_domain(parsed, fallback_message=message)
 
     async def stream_answer(
         self,
@@ -192,16 +250,22 @@ class ChatService:
         *,
         message: str,
         history: Sequence[ChatMessage],
+        structured: bool = False,
     ) -> list[dict[str, str]]:
         history_text = "\n".join(
             f"{turn.role}: {turn.content}" for turn in history[-4:]
         ).strip()
+        output_instruction = (
+            "Return only compact JSON with keys: query and scope. "
+            if not structured
+            else "Use the supplied structured response schema. "
+        )
         return [
             {
                 "role": "system",
                 "content": (
                     "Create a retrieval plan for a RAG system. Do not answer the user. "
-                    "Return only compact JSON with keys: query and scope. "
+                    f"{output_instruction}"
                     "query must be a concise search request for the document corpus. "
                     "scope must be focused or broad. Use broad for questions that need "
                     "many parts of a document, such as counts, totals, complete lists, "
@@ -291,6 +355,45 @@ def _parse_retrieval_plan(content: str, *, fallback_message: str) -> RetrievalPl
     )
 
 
+def _extract_structured_retrieval_plan(response: object) -> RetrievalPlanProviderSchema:
+    choices = getattr(response, "choices", None)
+    if not choices:
+        raise _StructuredRetrievalPlanError("missing_choice")
+
+    choice = choices[0]
+    finish_reason = getattr(choice, "finish_reason", None)
+    if finish_reason not in (None, "stop"):
+        raise _StructuredRetrievalPlanError("incomplete")
+
+    message = getattr(choice, "message", None)
+    if message is None:
+        raise _StructuredRetrievalPlanError("missing_message")
+
+    if getattr(message, "refusal", None):
+        raise _StructuredRetrievalPlanError("refusal")
+
+    parsed = getattr(message, "parsed", None)
+    if not isinstance(parsed, RetrievalPlanProviderSchema):
+        raise _StructuredRetrievalPlanError("invalid_parsed")
+
+    return parsed
+
+
+def _provider_retrieval_plan_to_domain(
+    parsed: RetrievalPlanProviderSchema,
+    *,
+    fallback_message: str,
+) -> RetrievalPlan:
+    query = " ".join(parsed.query.split())
+    if not query:
+        query = " ".join(fallback_message.split())
+
+    return RetrievalPlan(
+        query=query[:500],
+        broad=parsed.scope == "broad" or _looks_like_broad_request(fallback_message),
+    )
+
+
 def _fallback_retrieval_plan(message: str) -> RetrievalPlan:
     query = " ".join(message.split())
     return RetrievalPlan(query=query[:500], broad=_looks_like_broad_request(message))
@@ -298,6 +401,18 @@ def _fallback_retrieval_plan(message: str) -> RetrievalPlan:
 
 def fallback_retrieval_plan(message: str) -> RetrievalPlan:
     return _fallback_retrieval_plan(message)
+
+
+def _log_structured_retrieval_plan_failure(
+    reason: str,
+    exc: Exception | None = None,
+) -> None:
+    log_event(
+        _LOGGER,
+        "retrieval_plan_structured_failed",
+        reason=reason,
+        error=type(exc).__name__ if exc is not None else None,
+    )
 
 
 def _strip_json_fence(content: str) -> str:

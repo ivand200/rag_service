@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -29,7 +30,7 @@ from app.db.models import (
 )
 from app.db.session import get_db_session
 from app.main import create_app
-from app.services.llm import RetrievalPlan
+from app.services.llm import ChatService, RetrievalPlan, RetrievalPlanProviderSchema
 from tests.api.auth_helpers import TEST_CLERK_PUBLIC_KEY, auth_headers
 
 try:
@@ -86,6 +87,48 @@ class FakeChatService:
     ) -> str:
         self.history_contents = [message.content for message in history]
         return self.response_text
+
+
+class FakeStructuredChatCompletionsAPI:
+    def __init__(
+        self,
+        *,
+        parsed: RetrievalPlanProviderSchema,
+        answer: str,
+    ) -> None:
+        self.parsed = parsed
+        self.answer = answer
+        self.parse_calls: list[dict[str, object]] = []
+        self.create_calls: list[dict[str, object]] = []
+
+    async def parse(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        response_format: type[RetrievalPlanProviderSchema],
+    ) -> object:
+        self.parse_calls.append(
+            {
+                "model": model,
+                "messages": messages,
+                "response_format": response_format,
+            }
+        )
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(parsed=self.parsed, refusal=None),
+                )
+            ]
+        )
+
+    async def create(self, *, model: str, messages: list[dict[str, str]]) -> object:
+        self.create_calls.append({"model": model, "messages": messages})
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=self.answer))]
+        )
 
 
 class FakeStreamingChatService(FakeChatService):
@@ -783,6 +826,60 @@ async def test_broad_retrieval_plan_uses_expanded_chunk_count(
         "alert is a daisyUI component.",
         "avatar is a daisyUI component.",
     ]
+
+
+@pytest.mark.anyio
+async def test_structured_retrieval_plan_expands_chunks_through_chat_boundary(
+    chat_harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    client, session_factory = chat_harness
+    app = client._transport.app  # type: ignore[attr-defined]
+    settings = build_settings(
+        enable_structured_retrieval_plan=True,
+        retrieval_top_k=1,
+        retrieval_expanded_top_k=3,
+    )
+    chat_api = FakeStructuredChatCompletionsAPI(
+        parsed=RetrievalPlanProviderSchema(
+            query="daisyUI component list",
+            scope="broad",
+        ),
+        answer="The document lists three daisyUI components.",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.state.embedding_service = FakeEmbeddingService(
+        {"daisyUI component list": [1.0] + [0.0] * 1023}
+    )
+    app.state.chat_service = ChatService(
+        settings,
+        client=SimpleNamespace(chat=SimpleNamespace(completions=chat_api)),
+    )
+    workspace_id = await _seed_component_document(session_factory)
+    chat_session = await _create_session(
+        session_factory,
+        workspace_id=workspace_id,
+        clerk_user_id="user_123",
+    )
+
+    response = await client.post(
+        "/api/chat/messages",
+        json={"session_id": chat_session.id, "message": "How many components are listed?"},
+        headers=auth_headers(user_id="user_123"),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["grounded"] is True
+    assert (
+        response.json()["assistant_message"]["content"]
+        == "The document lists three daisyUI components."
+    )
+    assert [item["snippet"] for item in response.json()["citations"]] == [
+        "accordion is a daisyUI component.",
+        "alert is a daisyUI component.",
+        "avatar is a daisyUI component.",
+    ]
+    assert chat_api.parse_calls[0]["response_format"] is RetrievalPlanProviderSchema
+    assert "Return only compact JSON" not in chat_api.parse_calls[0]["messages"][0]["content"]
 
 
 @pytest.mark.anyio

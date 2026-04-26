@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     retrieval_top_k: int = 5
     retrieval_expanded_top_k: int = 12
+    enable_structured_retrieval_plan: bool = False
     enable_thinking: bool = False
 
     upload_max_bytes: int = 25 * 1024 * 1024
