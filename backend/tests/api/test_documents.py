@@ -50,7 +50,8 @@ class FakeChatService:
 
 def build_settings(**overrides: object) -> Settings:
     return Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         database_url="sqlite+pysqlite:///:memory:",
         s3_endpoint_url="http://localhost:9000",
         clerk_jwt_public_key=TEST_CLERK_PUBLIC_KEY,

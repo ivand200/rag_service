@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import get_settings
 from app.db.session import dispose_async_engine, get_async_session_factory
 from app.services.chat import claim_next_title_job, process_title_job
+from app.services.e2e import create_chat_service, create_embedding_service
 from app.services.ingestion import claim_next_job, process_job
-from app.services.llm import ChatService, EmbeddingService
 from app.services.observability import bind_log_context, configure_logging, get_logger, log_event
 from app.services.storage import StorageService
 
@@ -21,8 +21,8 @@ async def run_forever() -> None:
     settings = get_settings()
     session_factory = get_async_session_factory()
     storage = StorageService(settings)
-    embedding_service = EmbeddingService(settings)
-    chat_service = ChatService(settings)
+    embedding_service = create_embedding_service(settings)
+    chat_service = create_chat_service(settings)
     log_event(
         logger,
         "worker_started",

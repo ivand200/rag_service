@@ -3,17 +3,25 @@ import { SignIn, useAuth } from '@clerk/vue'
 import { computed, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { E2E_USER_LABEL, isE2EApp } from '../auth/e2e'
+
 const HOME_PATH = '/'
 const AUTH_PATH = '/auth'
 const SIGN_UP_PATH = '/sign-up'
 
 const router = useRouter()
-const { isLoaded, isSignedIn } = useAuth()
+const clerkAuth = isE2EApp ? null : useAuth()
 
-const isReadyForAuthCard = computed(() => isLoaded.value && !isSignedIn.value)
+const isReadyForAuthCard = computed(() => {
+  if (isE2EApp) {
+    return false
+  }
+
+  return clerkAuth?.isLoaded.value === true && !clerkAuth.isSignedIn.value
+})
 
 watchEffect(() => {
-  if (isLoaded.value && isSignedIn.value) {
+  if (!isE2EApp && clerkAuth?.isLoaded.value && clerkAuth.isSignedIn.value) {
     void router.replace(HOME_PATH)
   }
 })
@@ -21,7 +29,17 @@ watchEffect(() => {
 
 <template>
   <section class="auth-route" aria-label="Authentication">
-    <div v-if="!isReadyForAuthCard" class="route-shell">
+    <div v-if="isE2EApp" class="route-shell">
+      <div class="route-card" role="status" aria-live="polite">
+        <p class="route-eyebrow">Authentication</p>
+        <h1 class="route-title">E2E sign-in route is ready.</h1>
+        <p class="route-copy">
+          The deterministic browser test user is signed in as {{ E2E_USER_LABEL }}.
+        </p>
+      </div>
+    </div>
+
+    <div v-else-if="!isReadyForAuthCard" class="route-shell">
       <div class="route-card" role="status" aria-live="polite">
         <p class="route-eyebrow">Authentication</p>
         <h1 class="route-title">Preparing your workspace access.</h1>

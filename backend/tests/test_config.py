@@ -7,7 +7,8 @@ from app.config import Settings
 
 def test_settings_validate_frontend_origin() -> None:
     settings = Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         frontend_origin="http://localhost:5173/",
     )
     assert settings.frontend_origin == "http://localhost:5173"
@@ -15,7 +16,8 @@ def test_settings_validate_frontend_origin() -> None:
 
 def test_settings_default_clerk_authorized_parties_to_frontend_origin() -> None:
     settings = Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         frontend_origin="http://localhost:5173/",
     )
 
@@ -24,7 +26,8 @@ def test_settings_default_clerk_authorized_parties_to_frontend_origin() -> None:
 
 def test_settings_parse_clerk_authorized_parties() -> None:
     settings = Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         clerk_authorized_parties="http://localhost:5173/, https://demo.example.com/",
     )
 
@@ -36,7 +39,8 @@ def test_settings_parse_clerk_authorized_parties() -> None:
 
 def test_settings_normalize_escaped_clerk_public_key_newlines() -> None:
     settings = Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         clerk_jwt_public_key="-----BEGIN PUBLIC KEY-----\\nabc\\n-----END PUBLIC KEY-----",
     )
 
@@ -48,6 +52,30 @@ def test_settings_normalize_escaped_clerk_public_key_newlines() -> None:
 def test_settings_reject_invalid_clerk_authorized_parties() -> None:
     with pytest.raises(ValueError):
         Settings(
-            dashscope_api_key="test-key",
+            openai_api_key="test-key",
+            dashscope_api_key="",
             clerk_authorized_parties="localhost:5173",
         )
+
+
+def test_settings_use_openai_provider_configuration_first() -> None:
+    settings = Settings(
+        openai_api_key="openai-key",
+        openai_base_url="https://api.openai.com/v1",
+        dashscope_api_key="legacy-key",
+        dashscope_base_url="https://dashscope.example.test/v1",
+    )
+
+    assert settings.provider_api_key == "openai-key"
+    assert settings.provider_base_url == "https://api.openai.com/v1"
+
+
+def test_settings_allow_legacy_dashscope_provider_configuration() -> None:
+    settings = Settings(
+        openai_api_key="",
+        dashscope_api_key="legacy-key",
+        dashscope_base_url="https://dashscope.example.test/v1",
+    )
+
+    assert settings.provider_api_key == "legacy-key"
+    assert settings.provider_base_url == "https://dashscope.example.test/v1"

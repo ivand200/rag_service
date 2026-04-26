@@ -1151,23 +1151,24 @@ button {
   padding: 6px 14px;
   border: none;
   border-radius: 8px;
-  background: #c7d3cb;
-  color: #f7f4ef;
+  background: #d5dfd8;
+  color: #7a8a80;
   font-size: 13px;
   font-weight: 600;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
 
 .t-send:not(:disabled) {
-  background: #b9c9be;
+  background: #2a5c3f;
   color: #ffffff;
 }
 
 .t-send:hover:not(:disabled) {
-  background: #aebfb4;
+  background: #244f36;
+  transform: translateY(-1px);
 }
 
 .t-send:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 

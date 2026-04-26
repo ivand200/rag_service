@@ -36,7 +36,7 @@ async def ready(
         raise HTTPException(status_code=503, detail="database unavailable") from exc
     checks["database"] = "ok"
 
-    if not settings.dashscope_api_key:
+    if not settings.provider_api_key:
         raise HTTPException(status_code=503, detail="provider configuration missing")
     checks["provider_config"] = "ok"
 

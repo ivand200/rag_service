@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import sqrt
 
@@ -18,6 +19,7 @@ class RetrievedChunk:
     chunk_id: int
     document_id: int
     document_name: str
+    chunk_index: int
     text: str
     snippet: str
     page_number: int | None
@@ -73,6 +75,7 @@ async def search_ready_chunks(
                 chunk_id=chunk.id,
                 document_id=document.id,
                 document_name=document.filename,
+                chunk_index=chunk.chunk_index,
                 text=chunk.text,
                 snippet=chunk.snippet,
                 page_number=chunk.page_number,
@@ -91,6 +94,7 @@ async def search_ready_chunks(
                 chunk_id=chunk.id,
                 document_id=document.id,
                 document_name=document.filename,
+                chunk_index=chunk.chunk_index,
                 text=chunk.text,
                 snippet=chunk.snippet,
                 page_number=chunk.page_number,
@@ -128,6 +132,82 @@ def build_grounding_context(chunks: Sequence[RetrievedChunk]) -> str:
         location = f" ({', '.join(location_parts)})" if location_parts else ""
         sections.append(f"[Source {index}] {chunk.document_name}{location}\n{chunk.text}")
     return "\n\n".join(sections)
+
+
+def build_broad_grounding_context(chunks: Sequence[RetrievedChunk]) -> str:
+    ordered_chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.chunk_index))
+    component_names = _extract_component_names(ordered_chunks)
+    if component_names:
+        return "\n\n".join(
+            [
+                (
+                    "Document outline evidence:\n"
+                    f"Detected {len(component_names)} unique components in the retrieved "
+                    f"document context: {', '.join(component_names)}."
+                ),
+                "Retrieved evidence snippets:\n" + _build_snippet_context(ordered_chunks),
+            ]
+        )
+
+    heading_names = _extract_heading_names(ordered_chunks)
+    if heading_names:
+        return "\n\n".join(
+            [
+                (
+                    "Document outline evidence:\n"
+                    f"Detected {len(heading_names)} document sections in the retrieved "
+                    f"context: {', '.join(heading_names)}."
+                ),
+                "Retrieved evidence snippets:\n" + _build_snippet_context(ordered_chunks),
+            ]
+        )
+
+    return build_grounding_context(ordered_chunks)
+
+
+def _build_snippet_context(chunks: Sequence[RetrievedChunk]) -> str:
+    sections: list[str] = []
+    for index, chunk in enumerate(chunks, start=1):
+        sections.append(f"[Source {index}] {chunk.document_name}\n{chunk.snippet}")
+    return "\n\n".join(sections)
+
+
+def _extract_component_names(chunks: Sequence[RetrievedChunk]) -> list[str]:
+    text = " ".join(chunk.text for chunk in chunks)
+    matches = re.finditer(
+        r"(?<!#)###(?!#)\s+([a-z0-9][a-z0-9-]*)\b.*?"
+        r"\[\1 docs\]\(https?://[^)]*/components/[^)]*\)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return _unique_names(match.group(1) for match in matches)
+
+
+def _extract_heading_names(chunks: Sequence[RetrievedChunk]) -> list[str]:
+    text = " ".join(chunk.text for chunk in chunks)
+    matches = re.finditer(
+        r"(?<!#)#{1,3}(?!#)\s+(.+?)(?=\s+(?<!#)#{1,6}(?!#)\s+|$)",
+        text,
+    )
+    names: list[str] = []
+    for match in matches:
+        cleaned = " ".join(match.group(1).split())
+        if len(cleaned) > 80:
+            cleaned = cleaned[:77].rstrip() + "..."
+        names.append(cleaned)
+    return _unique_names(names)
+
+
+def _unique_names(names: Iterable[object]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        normalized = " ".join(str(name).split()).strip(" .,;:-")
+        key = normalized.casefold()
+        if normalized and key not in seen:
+            seen.add(key)
+            unique.append(normalized)
+    return unique
 
 
 def _get_dialect_name(session: AsyncSession) -> str | None:

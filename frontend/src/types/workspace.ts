@@ -50,6 +50,43 @@ export interface ChatExchangeResponse {
   grounded: boolean
 }
 
+export interface ChatMessageStreamStartEvent {
+  user_message: ChatMessage
+}
+
+export interface ChatMessageStreamTokenEvent {
+  text: string
+}
+
+export interface ChatMessageStreamDoneEvent {
+  assistant_message: ChatMessage
+  citations: Citation[]
+  grounded: boolean
+}
+
+export interface ChatMessageStreamErrorEvent {
+  detail: string
+}
+
+export type ChatMessageStreamEvent =
+  | { event: 'start'; data: ChatMessageStreamStartEvent }
+  | { event: 'token'; data: ChatMessageStreamTokenEvent }
+  | { event: 'done'; data: ChatMessageStreamDoneEvent }
+  | { event: 'error'; data: ChatMessageStreamErrorEvent }
+
+export interface StreamingAssistantMessage {
+  client_id: string
+  role: 'assistant'
+  content: string
+  grounded: boolean
+  citations_json: Citation[] | null
+  created_at: string
+  failed: boolean
+  error_detail: string | null
+}
+
+export type ChatDisplayMessage = ChatMessage | StreamingAssistantMessage
+
 export interface WorkspaceResponse {
   id: number
   name: string

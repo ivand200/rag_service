@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -14,7 +15,8 @@ from app.services.storage import StorageService
 
 def build_settings(**overrides: object) -> Settings:
     return Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         database_url="sqlite+pysqlite:///:memory:",
         s3_endpoint_url="http://localhost:9000",
         **overrides,
@@ -44,6 +46,42 @@ class FakeChatCompletionsAPI:
         self.calls.append({"model": model, "messages": messages})
         content = self.responses[len(self.calls) - 1]
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+
+class FakeStream:
+    def __init__(self, events: list[object]) -> None:
+        self._events = events
+        self.closed = False
+
+    def __aiter__(self) -> FakeStream:
+        self._iterator = iter(self._events)
+        return self
+
+    async def __anext__(self) -> object:
+        try:
+            return next(self._iterator)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FakeStreamingChatCompletionsAPI:
+    def __init__(self, stream_events: list[object]) -> None:
+        self.stream_events = stream_events
+        self.calls: list[dict[str, Any]] = []
+        self.stream = FakeStream(stream_events)
+
+    async def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        stream: bool = False,
+    ) -> object:
+        self.calls.append({"model": model, "messages": messages, "stream": stream})
+        return self.stream
 
 
 class FakeAsyncS3Body:
@@ -134,6 +172,47 @@ def test_chat_service_generates_answer_and_session_title_from_async_client() -> 
 
     assert (answer, title) == ("Grounded answer", "Short title")
     assert len(chat_api.calls) == 2
+
+
+def test_chat_service_streams_text_deltas_and_closes_provider_stream() -> None:
+    chat_api = FakeStreamingChatCompletionsAPI(
+        [
+            SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="Paris "))]
+            ),
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(
+                            content=[
+                                {"text": "is "},
+                                SimpleNamespace(text="the capital"),
+                            ]
+                        )
+                    )
+                ]
+            ),
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None))]),
+        ]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=chat_api))
+    service = ChatService(build_settings(), client=client)
+
+    async def collect_chunks() -> list[str]:
+        return [
+            chunk
+            async for chunk in service.stream_answer(
+                question="What is the capital of France?",
+                context="Paris is the capital of France.",
+                history=[],
+            )
+        ]
+
+    result = asyncio.run(collect_chunks())
+
+    assert result == ["Paris ", "is ", "the capital"]
+    assert chat_api.calls[0]["stream"] is True
+    assert chat_api.stream.closed is True
 
 
 def test_storage_service_ensures_bucket_uploads_and_downloads_with_async_client() -> None:

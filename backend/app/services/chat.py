@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -17,8 +17,10 @@ from app.db.models import (
     MessageRole,
     Workspace,
 )
-from app.services.llm import ChatService, EmbeddingService
+from app.services.llm import ChatService, EmbeddingService, RetrievalPlan, fallback_retrieval_plan
+from app.services.observability import get_logger, log_event
 from app.services.retrieval import (
+    build_broad_grounding_context,
     build_citations,
     build_grounding_context,
     search_ready_chunks,
@@ -36,10 +38,24 @@ GROUNDING_MIN_SCORE = 0.45
 ABSTENTION_MESSAGE = "I can’t support an answer to that from the uploaded documents."
 DEFAULT_SESSION_TITLE = "New session"
 MAX_SESSION_TITLE_LENGTH = 255
+logger = get_logger(__name__)
 
 
 class ChatSessionNotFoundError(Exception):
     pass
+
+
+@dataclass(slots=True)
+class ChatExchangePreparation:
+    workspace: Workspace
+    chat_session: ChatSession
+    user_message: ChatMessage
+    history: Sequence[ChatMessage]
+    question: str
+    grounding_context: str
+    citations: list[Citation]
+    grounded: bool
+    top_score: float
 
 
 @dataclass(slots=True)
@@ -153,6 +169,41 @@ async def create_chat_exchange(
     clerk_user_id: str,
     session_id: int,
 ) -> ChatExchangeResult:
+    prepared_exchange = await prepare_chat_exchange(
+        session=session,
+        settings=settings,
+        embedding_service=embedding_service,
+        chat_service=chat_service,
+        message=message,
+        clerk_user_id=clerk_user_id,
+        session_id=session_id,
+    )
+    answer = ABSTENTION_MESSAGE
+    if prepared_exchange.grounded:
+        answer = await chat_service.generate_answer(
+            question=prepared_exchange.question,
+            context=prepared_exchange.grounding_context,
+            history=prepared_exchange.history,
+        )
+
+    return await finalize_prepared_chat_exchange(
+        session=session,
+        prepared_exchange=prepared_exchange,
+        answer=answer,
+        not_supported_token=chat_service.not_supported_token,
+    )
+
+
+async def prepare_chat_exchange(
+    *,
+    session: AsyncSession,
+    settings: Settings,
+    embedding_service: EmbeddingService,
+    chat_service: ChatService,
+    message: str,
+    clerk_user_id: str,
+    session_id: int,
+) -> ChatExchangePreparation:
     workspace = await ensure_workspace(session)
     chat_session = await get_owned_chat_session(
         session,
@@ -160,6 +211,34 @@ async def create_chat_exchange(
         session_id=session_id,
     )
     history = await _get_recent_history(session, session_id=chat_session.id)
+
+    retrieval_plan = await _build_retrieval_plan(
+        chat_service=chat_service,
+        message=message,
+        history=history,
+    )
+    query_embedding = (await embedding_service.embed_texts([retrieval_plan.query]))[0]
+    retrieval_top_k = (
+        max(settings.retrieval_top_k, settings.retrieval_expanded_top_k)
+        if retrieval_plan.broad
+        else settings.retrieval_top_k
+    )
+    retrieved_chunks = await search_ready_chunks(
+        session=session,
+        workspace_id=workspace.id,
+        query_embedding=query_embedding,
+        top_k=retrieval_top_k,
+    )
+    top_score = retrieved_chunks[0].score if retrieved_chunks else 0.0
+
+    grounded = bool(retrieved_chunks) and top_score >= GROUNDING_MIN_SCORE
+    citations = build_citations(retrieved_chunks) if grounded else []
+    if grounded and retrieval_plan.broad:
+        grounding_context = build_broad_grounding_context(retrieved_chunks)
+    elif grounded:
+        grounding_context = build_grounding_context(retrieved_chunks)
+    else:
+        grounding_context = ""
 
     user_message = ChatMessage(
         workspace_id=workspace.id,
@@ -171,63 +250,100 @@ async def create_chat_exchange(
         citations_json=[],
     )
     session.add(user_message)
-    await session.commit()
-    await session.refresh(user_message)
-
-    query_embedding = (await embedding_service.embed_texts([message]))[0]
-    retrieved_chunks = await search_ready_chunks(
-        session=session,
-        workspace_id=workspace.id,
-        query_embedding=query_embedding,
-        top_k=settings.retrieval_top_k,
-    )
-    top_score = retrieved_chunks[0].score if retrieved_chunks else 0.0
-
-    grounded = bool(retrieved_chunks) and top_score >= GROUNDING_MIN_SCORE
-    citations = build_citations(retrieved_chunks) if grounded else []
-
-    if grounded:
-        answer = (
-            await chat_service.generate_answer(
-                question=message,
-                context=build_grounding_context(retrieved_chunks),
-                history=history,
-            )
-        ).strip()
-        if answer == chat_service.not_supported_token or not answer:
-            grounded = False
-            citations = []
-            answer = ABSTENTION_MESSAGE
-    else:
-        answer = ABSTENTION_MESSAGE
-
-    assistant_message = ChatMessage(
-        workspace_id=workspace.id,
-        clerk_user_id=clerk_user_id,
-        session_id=chat_session.id,
-        role=MessageRole.assistant.value,
-        content=answer,
-        grounded=grounded,
-        citations_json=[citation.model_dump() for citation in citations],
-    )
-    chat_session.updated_at = datetime.now(UTC)
-    session.add(assistant_message)
+    await session.flush()
     await _enqueue_title_job_for_first_user_message(
         session,
         chat_session=chat_session,
     )
     await session.commit()
-    await session.refresh(assistant_message)
-    await session.refresh(chat_session)
+    await session.refresh(user_message)
 
-    return ChatExchangeResult(
+    return ChatExchangePreparation(
         workspace=workspace,
         chat_session=chat_session,
         user_message=user_message,
-        assistant_message=assistant_message,
+        history=history,
+        question=message,
+        grounding_context=grounding_context,
         citations=citations,
         grounded=grounded,
         top_score=top_score,
+    )
+
+
+async def _build_retrieval_plan(
+    *,
+    chat_service: ChatService,
+    message: str,
+    history: Sequence[ChatMessage],
+) -> RetrievalPlan:
+    try:
+        return await chat_service.generate_retrieval_plan(message=message, history=history)
+    except Exception as exc:
+        log_event(
+            logger,
+            "retrieval_plan_failed",
+            error=type(exc).__name__,
+            detail=str(exc),
+        )
+        return fallback_retrieval_plan(message)
+
+
+async def stream_prepared_chat_answer(
+    *,
+    prepared_exchange: ChatExchangePreparation,
+    chat_service: ChatService,
+) -> AsyncIterator[str]:
+    if not prepared_exchange.grounded:
+        yield ABSTENTION_MESSAGE
+        return
+
+    async for chunk in chat_service.stream_answer(
+        question=prepared_exchange.question,
+        context=prepared_exchange.grounding_context,
+        history=prepared_exchange.history,
+    ):
+        if chunk:
+            yield chunk
+
+
+async def finalize_prepared_chat_exchange(
+    *,
+    session: AsyncSession,
+    prepared_exchange: ChatExchangePreparation,
+    answer: str,
+    not_supported_token: str,
+) -> ChatExchangeResult:
+    normalized_answer, grounded, citations = _normalize_assistant_answer(
+        answer=answer,
+        grounded=prepared_exchange.grounded,
+        citations=prepared_exchange.citations,
+        not_supported_token=not_supported_token,
+    )
+
+    assistant_message = ChatMessage(
+        workspace_id=prepared_exchange.workspace.id,
+        clerk_user_id=prepared_exchange.user_message.clerk_user_id,
+        session_id=prepared_exchange.chat_session.id,
+        role=MessageRole.assistant.value,
+        content=normalized_answer,
+        grounded=grounded,
+        citations_json=[citation.model_dump() for citation in citations],
+    )
+    prepared_exchange.chat_session.updated_at = datetime.now(UTC)
+    session.add(assistant_message)
+    await session.commit()
+    await session.refresh(assistant_message)
+    await session.refresh(prepared_exchange.chat_session)
+
+    return ChatExchangeResult(
+        workspace=prepared_exchange.workspace,
+        chat_session=prepared_exchange.chat_session,
+        user_message=prepared_exchange.user_message,
+        assistant_message=assistant_message,
+        citations=citations,
+        grounded=grounded,
+        top_score=prepared_exchange.top_score,
     )
 
 
@@ -422,6 +538,20 @@ async def _handle_title_job_error(
         job.completed_at = datetime.now(UTC)
 
     await session.commit()
+
+
+def _normalize_assistant_answer(
+    *,
+    answer: str,
+    grounded: bool,
+    citations: list[Citation],
+    not_supported_token: str,
+) -> tuple[str, bool, list[Citation]]:
+    normalized_answer = answer.strip()
+    if normalized_answer and normalized_answer != not_supported_token:
+        return normalized_answer, grounded, citations
+
+    return ABSTENTION_MESSAGE, False, []
 
 
 def _normalize_generated_title(generated_title: str, fallback_message: str) -> str:

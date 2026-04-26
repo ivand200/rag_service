@@ -5,7 +5,14 @@ import { ApiError, apiClient } from '../api/client'
 import ChatPanel from '../components/ChatPanel.vue'
 import DocumentRail from '../components/DocumentRail.vue'
 import WorkspaceHeader from '../components/WorkspaceHeader.vue'
-import type { ChatMessage, ChatSession, DocumentSummary, WorkspaceResponse } from '../types/workspace'
+import type {
+  ChatDisplayMessage,
+  ChatMessage,
+  ChatSession,
+  DocumentSummary,
+  StreamingAssistantMessage,
+  WorkspaceResponse
+} from '../types/workspace'
 
 const props = defineProps<{
   userLabel: string
@@ -15,7 +22,7 @@ const props = defineProps<{
 const workspace = ref<WorkspaceResponse | null>(null)
 const documents = ref<DocumentSummary[]>([])
 const sessions = ref<ChatSession[]>([])
-const messages = ref<ChatMessage[]>([])
+const messages = ref<ChatDisplayMessage[]>([])
 const activeSessionId = ref<number | null>(null)
 const isLoading = ref(true)
 const isRefreshing = ref(false)
@@ -31,10 +38,12 @@ const sendError = ref('')
 const sessionError = ref('')
 
 let historyRequestId = 0
+let streamingAssistantCounter = 0
 
 const POLL_INTERVAL_MS = 3000
 let pollingHandle: number | null = null
 let sessionMetadataPollingHandle: number | null = null
+const streamingAssistantId = ref<string | null>(null)
 
 const readyCount = computed(() => documents.value.filter((document) => document.status === 'ready').length)
 const processingCount = computed(
@@ -111,6 +120,7 @@ async function refreshSessionsUntilTitled() {
 async function loadChatHistory(sessionId: number | null) {
   if (sessionId === null) {
     messages.value = []
+    streamingAssistantId.value = null
     return
   }
 
@@ -124,6 +134,7 @@ async function loadChatHistory(sessionId: number | null) {
     }
 
     messages.value = payload.messages
+    streamingAssistantId.value = null
     sendError.value = ''
   } catch (error) {
     if (requestId !== historyRequestId) {
@@ -131,6 +142,7 @@ async function loadChatHistory(sessionId: number | null) {
     }
 
     messages.value = []
+    streamingAssistantId.value = null
     sendError.value = error instanceof Error ? error.message : 'Failed to load chat history'
   } finally {
     if (requestId === historyRequestId) {
@@ -229,25 +241,52 @@ async function onSend(message: string) {
     return
   }
 
+  const sessionId = activeSessionId.value
   sendError.value = ''
   isSending.value = true
+  let streamFailed = false
 
   try {
-    const exchange = await apiClient.sendChatMessage(
-      activeSessionId.value,
+    await apiClient.streamChatMessage(
+      sessionId,
       message,
+      (event) => {
+        if (event.event === 'start') {
+          applyStreamStart(sessionId, event.data.user_message)
+          return
+        }
+
+        if (event.event === 'token') {
+          appendStreamToken(sessionId, event.data.text)
+          return
+        }
+
+        if (event.event === 'done') {
+          finalizeStreamSuccess(sessionId, event.data.assistant_message)
+          return
+        }
+
+        streamFailed = true
+        finalizeStreamFailure(sessionId, event.data.detail)
+      },
       await props.getAccessToken()
     )
-    messages.value = [...messages.value, exchange.user_message, exchange.assistant_message]
     await loadSessions()
     ensureSessionMetadataPolling()
   } catch (error) {
+    streamFailed = true
     if (error instanceof ApiError) {
-      sendError.value = error.message
+      finalizeStreamFailure(sessionId, error.message)
     } else {
-      sendError.value = error instanceof Error ? error.message : 'Failed to send message'
+      finalizeStreamFailure(
+        sessionId,
+        error instanceof Error ? error.message : 'Failed to send message'
+      )
     }
   } finally {
+    if (!streamFailed && activeSessionId.value === sessionId && streamingAssistantId.value !== null) {
+      streamingAssistantId.value = null
+    }
     isSending.value = false
   }
 }
@@ -280,6 +319,96 @@ function onSelectSession(sessionId: number) {
   }
 
   activeSessionId.value = sessionId
+}
+
+function createStreamingAssistantMessage(): StreamingAssistantMessage {
+  streamingAssistantCounter += 1
+  return {
+    client_id: `stream-${Date.now()}-${streamingAssistantCounter}`,
+    role: 'assistant',
+    content: '',
+    grounded: false,
+    citations_json: null,
+    created_at: new Date().toISOString(),
+    failed: false,
+    error_detail: null
+  }
+}
+
+function isStreamingAssistantMessage(message: ChatDisplayMessage): message is StreamingAssistantMessage {
+  return 'client_id' in message
+}
+
+function applyStreamStart(sessionId: number, userMessage: ChatMessage) {
+  if (activeSessionId.value !== sessionId) {
+    return
+  }
+
+  const streamingAssistant = createStreamingAssistantMessage()
+  streamingAssistantId.value = streamingAssistant.client_id
+  messages.value = [...messages.value, userMessage, streamingAssistant]
+}
+
+function appendStreamToken(sessionId: number, text: string) {
+  if (activeSessionId.value !== sessionId || streamingAssistantId.value === null) {
+    return
+  }
+
+  messages.value = messages.value.map((message) => {
+    if (!isStreamingAssistantMessage(message) || message.client_id !== streamingAssistantId.value) {
+      return message
+    }
+
+    return {
+      ...message,
+      content: `${message.content}${text}`
+    }
+  })
+}
+
+function finalizeStreamSuccess(sessionId: number, assistantMessage: ChatMessage) {
+  if (activeSessionId.value !== sessionId) {
+    streamingAssistantId.value = null
+    return
+  }
+
+  if (streamingAssistantId.value === null) {
+    const alreadyPresent = messages.value.some((message) =>
+      !isStreamingAssistantMessage(message) && message.id === assistantMessage.id
+    )
+    if (!alreadyPresent) {
+      messages.value = [...messages.value, assistantMessage]
+    }
+    return
+  }
+
+  messages.value = messages.value.map((message) =>
+    isStreamingAssistantMessage(message) && message.client_id === streamingAssistantId.value
+      ? assistantMessage
+      : message
+  )
+  streamingAssistantId.value = null
+}
+
+function finalizeStreamFailure(sessionId: number, detail: string) {
+  sendError.value = detail
+
+  if (activeSessionId.value !== sessionId || streamingAssistantId.value === null) {
+    return
+  }
+
+  messages.value = messages.value.map((message) => {
+    if (!isStreamingAssistantMessage(message) || message.client_id !== streamingAssistantId.value) {
+      return message
+    }
+
+    return {
+      ...message,
+      failed: true,
+      error_detail: detail
+    }
+  })
+  streamingAssistantId.value = null
 }
 
 onMounted(async () => {
@@ -338,6 +467,7 @@ onBeforeUnmount(() => {
           :active-session-id="activeSessionId"
           :active-session-title="activeSession?.title ?? 'New session'"
           :messages="messages"
+          :streaming-assistant-id="streamingAssistantId"
           :ready-count="readyCount"
           :total-count="documents.length"
           :pending-count="processingCount"

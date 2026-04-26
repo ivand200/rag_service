@@ -2,13 +2,14 @@
 import { computed, ref } from 'vue'
 
 import CitationList from './CitationList.vue'
-import type { ChatMessage, ChatSession, Citation } from '../types/workspace'
+import type { ChatDisplayMessage, ChatSession, Citation, StreamingAssistantMessage } from '../types/workspace'
 
 const props = defineProps<{
   sessions: ChatSession[]
   activeSessionId: number | null
   activeSessionTitle: string
-  messages: ChatMessage[]
+  messages: ChatDisplayMessage[]
+  streamingAssistantId: string | null
   readyCount: number
   totalCount: number
   pendingCount: number
@@ -37,11 +38,23 @@ const canSend = computed(
 )
 const activeContextLabel = computed(() => `${props.readyCount} of ${props.totalCount} docs active`)
 
-function citationList(message: ChatMessage): Citation[] {
+function isStreamingAssistantMessage(message: ChatDisplayMessage): message is StreamingAssistantMessage {
+  return 'client_id' in message
+}
+
+function citationList(message: ChatDisplayMessage): Citation[] {
   return message.citations_json ?? []
 }
 
-function evidenceLabel(message: ChatMessage) {
+function evidenceLabel(message: ChatDisplayMessage) {
+  if (isStreamingAssistantMessage(message) && message.failed) {
+    return 'Stream interrupted'
+  }
+
+  if (isStreamingAssistantMessage(message) && message.client_id === props.streamingAssistantId) {
+    return 'Responding'
+  }
+
   if (message.grounded) {
     return 'Strong evidence'
   }
@@ -49,8 +62,16 @@ function evidenceLabel(message: ChatMessage) {
   return citationList(message).length > 0 ? 'Partial match' : 'Insufficient support'
 }
 
-function evidenceTone(message: ChatMessage) {
+function evidenceTone(message: ChatDisplayMessage) {
+  if (isStreamingAssistantMessage(message) && message.failed) {
+    return 'partial'
+  }
+
   return message.grounded ? 'strong' : 'partial'
+}
+
+function messageKey(message: ChatDisplayMessage) {
+  return isStreamingAssistantMessage(message) ? message.client_id : message.id
 }
 
 function submit() {
@@ -61,6 +82,15 @@ function submit() {
 
   emit('send', message)
   draft.value = ''
+}
+
+function onComposerKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+    return
+  }
+
+  event.preventDefault()
+  submit()
 }
 </script>
 
@@ -121,7 +151,7 @@ function submit() {
         <article
           v-for="message in messages"
           v-else
-          :key="message.id"
+          :key="messageKey(message)"
           class="t-turn"
           :class="message.role === 'user' ? 't-turn-user' : 't-turn-asst'"
         >
@@ -157,6 +187,7 @@ function submit() {
           rows="2"
           placeholder="Ask a question grounded in your documents..."
           :disabled="isSending || readyCount === 0 || activeSessionId === null"
+          @keydown="onComposerKeydown"
         ></textarea>
 
         <p v-if="sendError" class="t-inline-callout t-inline-callout-error t-composer-callout">{{ sendError }}</p>

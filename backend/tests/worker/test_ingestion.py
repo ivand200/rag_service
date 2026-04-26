@@ -41,7 +41,8 @@ except ImportError:  # pragma: no cover - Python < 3.11 compatibility
 
 def build_settings(**overrides: object) -> Settings:
     return Settings(
-        dashscope_api_key="test-key",
+        openai_api_key="test-key",
+        dashscope_api_key="",
         database_url="sqlite+pysqlite:///:memory:",
         s3_endpoint_url="http://localhost:9000",
         **overrides,
@@ -390,8 +391,8 @@ async def test_worker_processes_one_ingestion_job_before_checking_title_jobs(
     monkeypatch.setattr(worker_main, "_process_claimed_job", fake_process_claimed_job)
     monkeypatch.setattr(worker_main, "dispose_async_engine", fake_dispose)
     monkeypatch.setattr(worker_main, "StorageService", lambda settings: object())
-    monkeypatch.setattr(worker_main, "EmbeddingService", lambda settings: object())
-    monkeypatch.setattr(worker_main, "ChatService", lambda settings: object())
+    monkeypatch.setattr(worker_main, "create_embedding_service", lambda settings: object())
+    monkeypatch.setattr(worker_main, "create_chat_service", lambda settings: object())
     monkeypatch.setattr(worker_main, "configure_logging", lambda: None)
     monkeypatch.setattr(worker_main, "log_event", lambda *args, **kwargs: None)
 

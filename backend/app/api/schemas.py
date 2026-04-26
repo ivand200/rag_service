@@ -68,6 +68,24 @@ class ChatExchangeResponse(BaseModel):
     grounded: bool
 
 
+class ChatMessageStreamStartEvent(BaseModel):
+    user_message: ChatMessageRead
+
+
+class ChatMessageStreamTokenEvent(BaseModel):
+    text: str
+
+
+class ChatMessageStreamDoneEvent(BaseModel):
+    assistant_message: ChatMessageRead
+    citations: list[Citation]
+    grounded: bool
+
+
+class ChatMessageStreamErrorEvent(BaseModel):
+    detail: str
+
+
 class WorkspaceResponse(BaseModel):
     id: int
     name: str

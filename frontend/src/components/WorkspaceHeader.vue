@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { UserButton } from '@clerk/vue'
 
+import { isE2EApp } from '../auth/e2e'
+
 defineProps<{
   readyCount: number
   processingCount: number
@@ -48,6 +50,7 @@ defineProps<{
         </div>
 
         <UserButton
+          v-if="!isE2EApp"
           after-sign-out-url="/auth"
           :appearance="{
             elements: {
@@ -55,6 +58,7 @@ defineProps<{
             }
           }"
         />
+        <div v-else class="t-user-button-avatar" aria-hidden="true">E2E</div>
       </div>
     </div>
   </header>

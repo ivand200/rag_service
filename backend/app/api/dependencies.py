@@ -10,6 +10,7 @@ from app.services.auth import (
     AuthenticationError,
     verify_clerk_token,
 )
+from app.services.e2e import authenticate_e2e_token, create_chat_service, create_embedding_service
 from app.services.llm import ChatService, EmbeddingService
 from app.services.storage import StorageService
 
@@ -21,11 +22,11 @@ def get_storage_service(settings: Settings = Depends(get_settings)) -> StorageSe
 
 
 def get_embedding_service(settings: Settings = Depends(get_settings)) -> EmbeddingService:
-    return EmbeddingService(settings)
+    return create_embedding_service(settings)
 
 
 def get_chat_service(settings: Settings = Depends(get_settings)) -> ChatService:
-    return ChatService(settings)
+    return create_chat_service(settings)
 
 
 def require_current_user(
@@ -36,6 +37,16 @@ def require_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    e2e_user = authenticate_e2e_token(token=credentials.credentials, settings=settings)
+    if e2e_user is not None:
+        return e2e_user
+    if settings.is_e2e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid authentication token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

@@ -1,0 +1,40 @@
+name: rag-service-e2e
+
+services:
+  postgres:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  backend:
+    ports: !reset []
+    environment:
+      APP_ENV: e2e
+      FRONTEND_ORIGIN: http://localhost:5173
+      CLERK_JWT_PUBLIC_KEY: ""
+      CLERK_AUTHORIZED_PARTIES: http://localhost:5173
+      OPENAI_API_KEY: e2e-dummy-key
+      INGESTION_POLL_INTERVAL_SECONDS: 1
+      INGESTION_MAX_RETRIES: 2
+      RETRIEVAL_TOP_K: 3
+
+  worker:
+    environment:
+      APP_ENV: e2e
+      FRONTEND_ORIGIN: http://localhost:5173
+      CLERK_JWT_PUBLIC_KEY: ""
+      CLERK_AUTHORIZED_PARTIES: http://localhost:5173
+      OPENAI_API_KEY: e2e-dummy-key
+      INGESTION_POLL_INTERVAL_SECONDS: 1
+      INGESTION_MAX_RETRIES: 2
+      RETRIEVAL_TOP_K: 3
+
+  frontend:
+    ports: !override
+      - "${E2E_FRONTEND_PORT:-5173}:80"
+    build:
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_APP_ENV: e2e
+        VITE_CLERK_PUBLISHABLE_KEY: ""

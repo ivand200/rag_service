@@ -33,7 +33,8 @@ class FailingSession:
 
 def build_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
-        "dashscope_api_key": "test-key",
+        "openai_api_key": "test-key",
+        "dashscope_api_key": "",
         "database_url": "sqlite+pysqlite:///:memory:",
         "s3_endpoint_url": "http://localhost:9000",
     }
@@ -150,7 +151,9 @@ async def test_ready_reports_database_unavailable(
 async def test_ready_reports_provider_configuration_missing(
     health_harness,
 ) -> None:
-    async for client in health_harness(settings=build_settings(dashscope_api_key="")):
+    async for client in health_harness(
+        settings=build_settings(openai_api_key="", dashscope_api_key="")
+    ):
         response = await client.get("/health/ready")
 
     assert response.status_code == 503

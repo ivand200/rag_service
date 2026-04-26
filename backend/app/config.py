@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, HttpUrl, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     frontend_origin: str = "http://localhost:5173"
     clerk_jwt_public_key: str | None = None
-    clerk_authorized_parties: list[str] = Field(default_factory=list)
+    clerk_authorized_parties: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/rag_service"
 
@@ -31,13 +32,16 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_secure: bool = False
 
-    dashscope_api_key: str
-    dashscope_base_url: HttpUrl = Field(
+    openai_api_key: str | None = None
+    openai_base_url: HttpUrl = Field(default="https://api.openai.com/v1")
+    dashscope_api_key: str | None = None
+    dashscope_base_url: HttpUrl | None = Field(
         default="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     )
-    chat_model: str = "qwen3.6-plus"
-    embedding_model: str = "text-embedding-v4"
+    chat_model: str = "gpt-4.1-mini"
+    embedding_model: str = "text-embedding-3-small"
     retrieval_top_k: int = 5
+    retrieval_expanded_top_k: int = 12
     enable_thinking: bool = False
 
     upload_max_bytes: int = 25 * 1024 * 1024
@@ -46,6 +50,22 @@ class Settings(BaseSettings):
     chunk_target_tokens: int = 800
     chunk_overlap_tokens: int = 120
     chunk_max_batch_size: int = 10
+
+    @property
+    def is_e2e(self) -> bool:
+        return self.app_env.lower() == "e2e"
+
+    @property
+    def provider_api_key(self) -> str:
+        return self.openai_api_key or self.dashscope_api_key or ""
+
+    @property
+    def provider_base_url(self) -> str:
+        if self.openai_api_key:
+            return str(self.openai_base_url)
+        if self.dashscope_base_url is not None:
+            return str(self.dashscope_base_url)
+        return str(self.openai_base_url)
 
     @field_validator("frontend_origin")
     @classmethod
@@ -83,7 +103,12 @@ class Settings(BaseSettings):
                 )
         return value
 
-    @field_validator("retrieval_top_k", "ingestion_max_retries", "chunk_max_batch_size")
+    @field_validator(
+        "retrieval_top_k",
+        "retrieval_expanded_top_k",
+        "ingestion_max_retries",
+        "chunk_max_batch_size",
+    )
     @classmethod
     def validate_positive_ints(cls, value: int) -> int:
         if value <= 0:

@@ -3,25 +3,37 @@ import { useAuth, useUser } from '@clerk/vue'
 import { computed, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { E2E_USER_LABEL, getE2EAccessToken, isE2EApp } from '../auth/e2e'
 import WorkspaceView from './WorkspaceView.vue'
 
 const AUTH_PATH = '/auth'
 
 const router = useRouter()
-const { getToken, isLoaded, isSignedIn } = useAuth()
-const { user } = useUser()
+const clerkAuth = isE2EApp ? null : useAuth()
+const clerkUser = isE2EApp ? null : useUser()
+
+const isLoaded = computed(() => (isE2EApp ? true : clerkAuth?.isLoaded.value === true))
+const isSignedIn = computed(() => (isE2EApp ? true : clerkAuth?.isSignedIn.value === true))
 
 async function getAccessToken() {
-  return getToken.value()
+  if (isE2EApp) {
+    return getE2EAccessToken()
+  }
+
+  return clerkAuth?.getToken.value() ?? null
 }
 
 const userLabel = computed(() => {
-  const fullName = user.value?.fullName?.trim()
+  if (isE2EApp) {
+    return E2E_USER_LABEL
+  }
+
+  const fullName = clerkUser?.user.value?.fullName?.trim()
   if (fullName) {
     return fullName
   }
 
-  const primaryEmail = user.value?.primaryEmailAddress?.emailAddress?.trim()
+  const primaryEmail = clerkUser?.user.value?.primaryEmailAddress?.emailAddress?.trim()
   if (primaryEmail) {
     return primaryEmail
   }
@@ -30,7 +42,7 @@ const userLabel = computed(() => {
 })
 
 watchEffect(() => {
-  if (isLoaded.value && !isSignedIn.value) {
+  if (!isE2EApp && isLoaded.value && !isSignedIn.value) {
     void router.replace(AUTH_PATH)
   }
 })

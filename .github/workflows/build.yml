@@ -1,0 +1,24 @@
+name: Build Validation
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - ".github/workflows/build.yml"
+  push:
+    branches:
+      - main
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker compose config
+        run: docker compose config
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile .
+      - name: Build frontend image
+        run: docker build -f frontend/Dockerfile .
