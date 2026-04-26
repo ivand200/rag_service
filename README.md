@@ -4,6 +4,10 @@ RAG Service is a production-minded retrieval-augmented generation app built as a
 
 The project demonstrates the shape of a real service, not a toy RAG script: authenticated browser flows, FastAPI service boundaries, background ingestion, `pgvector` retrieval, object storage, streaming chat responses, citations, abstention when evidence is weak, and Docker-based local reproducibility.
 
+## Preview
+
+![RAG Service workspace showing document upload, grounded answer, and citation source](./docs/demo_screen.png)
+
 ## Demo
 
 Demo video or GIF: coming soon.
