@@ -43,7 +43,7 @@ jobs:
           S3_BUCKET=rag-service-documents
           S3_REGION=us-east-1
           S3_SECURE=false
-          DASHSCOPE_API_KEY=e2e-dummy-key
+          OPENAI_API_KEY=e2e-dummy-key
           INGESTION_POLL_INTERVAL_SECONDS=1
           INGESTION_MAX_RETRIES=2
           RETRIEVAL_TOP_K=3

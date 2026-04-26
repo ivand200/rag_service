@@ -24,7 +24,7 @@ jobs:
         run: uv run ruff check app tests --ignore UP042
       - name: Pytest
         env:
-          DASHSCOPE_API_KEY: test-key
+          OPENAI_API_KEY: test-key
         run: uv run pytest tests -q
 
   frontend:
