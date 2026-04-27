@@ -3,27 +3,46 @@ import { useAuth, useUser } from '@clerk/vue'
 import { computed, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { E2E_USER_LABEL, getE2EAccessToken, isE2EApp } from '../auth/e2e'
+import {
+  E2E_USER_LABEL,
+  LOCAL_DEV_USER_LABEL,
+  getE2EAccessToken,
+  isClerkAuthMode,
+  isE2EApp,
+  isLocalAuthMode
+} from '../auth/e2e'
 import WorkspaceView from './WorkspaceView.vue'
 
 const AUTH_PATH = '/auth'
 
 const router = useRouter()
-const clerkAuth = isE2EApp ? null : useAuth()
-const clerkUser = isE2EApp ? null : useUser()
+const clerkAuth = isClerkAuthMode ? useAuth() : null
+const clerkUser = isClerkAuthMode ? useUser() : null
 
-const isLoaded = computed(() => (isE2EApp ? true : clerkAuth?.isLoaded.value === true))
-const isSignedIn = computed(() => (isE2EApp ? true : clerkAuth?.isSignedIn.value === true))
+const isLoaded = computed(() =>
+  isLocalAuthMode || isE2EApp ? true : clerkAuth?.isLoaded.value === true
+)
+const isSignedIn = computed(() =>
+  isLocalAuthMode || isE2EApp ? true : clerkAuth?.isSignedIn.value === true
+)
 
 async function getAccessToken() {
   if (isE2EApp) {
     return getE2EAccessToken()
   }
 
+  if (isLocalAuthMode) {
+    return null
+  }
+
   return clerkAuth?.getToken.value() ?? null
 }
 
 const userLabel = computed(() => {
+  if (isLocalAuthMode) {
+    return LOCAL_DEV_USER_LABEL
+  }
+
   if (isE2EApp) {
     return E2E_USER_LABEL
   }
@@ -42,7 +61,7 @@ const userLabel = computed(() => {
 })
 
 watchEffect(() => {
-  if (!isE2EApp && isLoaded.value && !isSignedIn.value) {
+  if (isClerkAuthMode && isLoaded.value && !isSignedIn.value) {
     void router.replace(AUTH_PATH)
   }
 })

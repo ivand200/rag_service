@@ -102,6 +102,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
         VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
+        VITE_AUTH_MODE: ${VITE_AUTH_MODE:-clerk}
     depends_on:
       backend:
         condition: service_healthy

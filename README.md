@@ -74,7 +74,7 @@ Prerequisites:
 
 - Docker Desktop or Docker Engine with Compose
 - An OpenAI API key
-- Clerk publishable key and JWT public key for signed-in browser flows
+- Clerk publishable key and JWT public key for signed-in browser flows, or local auth mode for faster development
 
 ```bash
 cp .env.example .env
@@ -82,6 +82,21 @@ docker compose up --build
 ```
 
 Open the app at `http://localhost:5173`.
+
+For local development without Clerk, set both auth modes in `.env` before starting the stack:
+
+```env
+AUTH_MODE=local
+VITE_AUTH_MODE=local
+```
+
+This signs the app in as `Local Dev User` while keeping the same backend upload, ingestion, retrieval, streaming chat, citation, and session behavior. Use Clerk mode for realistic demos and auth validation.
+
+To verify the local-auth browser path:
+
+```bash
+make e2e-local-auth
+```
 
 Useful local URLs:
 

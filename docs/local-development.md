@@ -15,7 +15,7 @@ This guide covers the local runtime for RAG Service. The project is a single-wor
 
 - Docker Desktop or Docker Engine with Compose.
 - A valid OpenAI API key.
-- Clerk frontend and backend configuration for signed-in browser flows.
+- Clerk frontend and backend configuration for signed-in browser flows in the recommended realistic demo path.
 - Node 20+ and `uv` if running frontend or backend checks outside Docker.
 
 ## Environment
@@ -35,8 +35,10 @@ Important variables:
 - `RETRIEVAL_TOP_K`: focused retrieval chunk count for ordinary questions.
 - `RETRIEVAL_EXPANDED_TOP_K`: broader chunk count for model-planned count/list/summary questions.
 - `CHUNK_MAX_BATCH_SIZE`: defaults to `10` to match the current provider limit.
-- `VITE_CLERK_PUBLISHABLE_KEY`: required by the Vue app for Clerk browser auth.
-- `CLERK_JWT_PUBLIC_KEY`: required by the backend to verify Clerk bearer tokens.
+- `AUTH_MODE`: backend auth mode; defaults to `clerk`, or set to `local` for the local auth bypass.
+- `VITE_AUTH_MODE`: frontend auth mode; defaults to `clerk`, or set to `local` to skip Clerk in the browser.
+- `VITE_CLERK_PUBLISHABLE_KEY`: required by the Vue app for Clerk browser auth in Clerk mode.
+- `CLERK_JWT_PUBLIC_KEY`: required by the backend to verify Clerk bearer tokens in Clerk mode.
 - `CLERK_AUTHORIZED_PARTIES`: optional comma-separated allowlist for Clerk token `azp`; defaults to `FRONTEND_ORIGIN`.
 - `FRONTEND_ORIGIN`: browser origin allowed by backend CORS.
 - `DATABASE_URL`: backend database connection string.
@@ -46,7 +48,51 @@ Local notes:
 
 - Docker Compose overrides `DATABASE_URL` and `S3_ENDPOINT_URL` so containers talk to `postgres` and `minio` on the Compose network.
 - The backend loads environment from either the repo-root `.env` or a local `.env`, depending on the working directory.
-- Clerk uses the repo-root `.env` values for both frontend and backend local runs, so fill in both the publishable key and JWT public key before testing signed-in flows.
+- Clerk is still the recommended path for realistic demos and auth validation, so fill in both the publishable key and JWT public key before testing signed-in flows in Clerk mode.
+
+## Skip Clerk Locally
+
+For day-to-day local development, you can bypass Clerk and run the app as one stable synthetic user.
+
+Set these two values together in `.env`:
+
+```bash
+AUTH_MODE=local
+VITE_AUTH_MODE=local
+```
+
+In local auth mode:
+
+- The frontend skips Clerk initialization and treats you as signed in.
+- The backend accepts protected requests without a bearer token.
+- The app uses the local user label `Local Dev User`.
+- Backend-owned chat/session data still uses the stable user id `local-dev-user`.
+
+Keep the two auth mode variables paired:
+
+- If `VITE_AUTH_MODE=local` but `AUTH_MODE=clerk`, the UI will load without Clerk but backend requests will return `401`.
+- If `AUTH_MODE=local` but `VITE_AUTH_MODE=clerk`, direct API work will succeed without Clerk but the browser will still try to use Clerk.
+
+Switch back to the default Clerk path with:
+
+```bash
+AUTH_MODE=clerk
+VITE_AUTH_MODE=clerk
+```
+
+If you change `VITE_AUTH_MODE`, rebuild the frontend image because Vite reads `VITE_*` variables at build time:
+
+```bash
+docker compose up --build
+```
+
+You can verify the browser local-auth path with:
+
+```bash
+make e2e-local-auth
+```
+
+Local auth is only for local development. Production configuration must keep Clerk auth enabled, and `APP_ENV=production` rejects `AUTH_MODE=local`.
 
 ## Start The Stack
 

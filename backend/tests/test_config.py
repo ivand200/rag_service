@@ -5,6 +5,34 @@ import pytest
 from app.config import Settings
 
 
+def test_settings_default_to_clerk_auth_mode() -> None:
+    settings = Settings(openai_api_key="test-key", dashscope_api_key="")
+
+    assert settings.auth_mode == "clerk"
+
+
+def test_settings_parse_local_auth_mode_with_local_defaults() -> None:
+    settings = Settings(
+        openai_api_key="test-key",
+        dashscope_api_key="",
+        auth_mode="local",
+    )
+
+    assert settings.auth_mode == "local"
+    assert settings.local_dev_user_id == "local-dev-user"
+    assert settings.local_dev_session_id == "local-dev-session"
+
+
+def test_settings_reject_local_auth_mode_in_production() -> None:
+    with pytest.raises(ValueError, match="AUTH_MODE=local is not allowed"):
+        Settings(
+            openai_api_key="test-key",
+            dashscope_api_key="",
+            app_env="production",
+            auth_mode="local",
+        )
+
+
 def test_settings_validate_frontend_origin() -> None:
     settings = Settings(
         openai_api_key="test-key",

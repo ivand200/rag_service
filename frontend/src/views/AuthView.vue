@@ -3,17 +3,17 @@ import { SignIn, useAuth } from '@clerk/vue'
 import { computed, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { E2E_USER_LABEL, isE2EApp } from '../auth/e2e'
+import { E2E_USER_LABEL, LOCAL_DEV_USER_LABEL, isClerkAuthMode, isE2EApp, isLocalAuthMode } from '../auth/e2e'
 
 const HOME_PATH = '/'
 const AUTH_PATH = '/auth'
 const SIGN_UP_PATH = '/sign-up'
 
 const router = useRouter()
-const clerkAuth = isE2EApp ? null : useAuth()
+const clerkAuth = isClerkAuthMode ? useAuth() : null
 
 const isReadyForAuthCard = computed(() => {
-  if (isE2EApp) {
+  if (!isClerkAuthMode) {
     return false
   }
 
@@ -21,7 +21,12 @@ const isReadyForAuthCard = computed(() => {
 })
 
 watchEffect(() => {
-  if (!isE2EApp && clerkAuth?.isLoaded.value && clerkAuth.isSignedIn.value) {
+  if (isLocalAuthMode) {
+    void router.replace(HOME_PATH)
+    return
+  }
+
+  if (isClerkAuthMode && clerkAuth?.isLoaded.value && clerkAuth.isSignedIn.value) {
     void router.replace(HOME_PATH)
   }
 })
@@ -29,7 +34,17 @@ watchEffect(() => {
 
 <template>
   <section class="auth-route" aria-label="Authentication">
-    <div v-if="isE2EApp" class="route-shell">
+    <div v-if="isLocalAuthMode" class="route-shell">
+      <div class="route-card" role="status" aria-live="polite">
+        <p class="route-eyebrow">Authentication</p>
+        <h1 class="route-title">Local auth mode is enabled.</h1>
+        <p class="route-copy">
+          The workspace is available without Clerk and will open as {{ LOCAL_DEV_USER_LABEL }}.
+        </p>
+      </div>
+    </div>
+
+    <div v-else-if="isE2EApp" class="route-shell">
       <div class="route-card" role="status" aria-live="polite">
         <p class="route-eyebrow">Authentication</p>
         <h1 class="route-title">E2E sign-in route is ready.</h1>

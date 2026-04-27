@@ -95,6 +95,52 @@ async def test_workspace_requires_authentication(
 
 
 @pytest.mark.anyio
+async def test_workspace_allows_missing_bearer_in_local_auth_mode(
+    workspace_harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    client, session_factory = workspace_harness
+    app = client._transport.app  # type: ignore[attr-defined]
+    app.dependency_overrides[get_settings] = lambda: build_settings(
+        auth_mode="local",
+        local_dev_user_id="local-user",
+        local_dev_session_id="local-session",
+    )
+
+    async with session_factory() as session:
+        workspace = Workspace(name="Personal Workspace")
+        session.add(workspace)
+        await session.flush()
+        session.add_all(
+            [
+                ChatMessage(
+                    workspace_id=workspace.id,
+                    clerk_user_id="local-user",
+                    role="assistant",
+                    content="Visible local answer",
+                    grounded=True,
+                    citations_json=[],
+                ),
+                ChatMessage(
+                    workspace_id=workspace.id,
+                    clerk_user_id="other-user",
+                    role="assistant",
+                    content="Hidden other answer",
+                    grounded=True,
+                    citations_json=[],
+                ),
+            ]
+        )
+        await session.commit()
+
+    response = await client.get("/api/workspace")
+
+    assert response.status_code == 200
+    assert [message["content"] for message in response.json()["messages"]] == [
+        "Visible local answer"
+    ]
+
+
+@pytest.mark.anyio
 async def test_workspace_rejects_invalid_bearer_token(
     workspace_harness: tuple[AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:

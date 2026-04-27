@@ -108,6 +108,20 @@ Coverage:
 
 E2E mode is explicitly gated by `APP_ENV=e2e` and `VITE_APP_ENV=e2e`; normal development and production continue to use Clerk and the configured OpenAI-compatible provider.
 
+## Local Auth Browser Smoke
+
+Run the local-auth browser smoke test from the repository root:
+
+```bash
+make e2e-local-auth
+```
+
+This starts Docker Compose with `AUTH_MODE=local` and builds the frontend with `VITE_AUTH_MODE=local`, then verifies the workspace opens as `Local Dev User` without Clerk. If port `5175` is already in use:
+
+```bash
+LOCAL_AUTH_FRONTEND_PORT=5176 make e2e-local-auth
+```
+
 ## CI Expectations
 
 GitHub Actions currently provide:

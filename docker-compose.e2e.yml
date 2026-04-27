@@ -37,4 +37,5 @@ services:
       args:
         VITE_API_BASE_URL: /api
         VITE_APP_ENV: e2e
+        VITE_AUTH_MODE: clerk
         VITE_CLERK_PUBLISHABLE_KEY: ""

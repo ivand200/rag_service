@@ -33,6 +33,12 @@ def require_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedUser:
+    if settings.auth_mode == "local":
+        return AuthenticatedUser(
+            clerk_user_id=settings.local_dev_user_id,
+            session_id=settings.local_dev_session_id,
+        )
+
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

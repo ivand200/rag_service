@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, HttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     frontend_origin: str = "http://localhost:5173"
+    auth_mode: Literal["clerk", "local"] = "clerk"
     clerk_jwt_public_key: str | None = None
     clerk_authorized_parties: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    local_dev_user_id: str = "local-dev-user"
+    local_dev_session_id: str = "local-dev-session"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/rag_service"
 
@@ -127,6 +130,8 @@ class Settings(BaseSettings):
     def validate_chunk_window(self) -> Settings:
         if self.chunk_target_tokens <= self.chunk_overlap_tokens:
             raise ValueError("CHUNK_TARGET_TOKENS must be greater than CHUNK_OVERLAP_TOKENS")
+        if self.app_env.lower() == "production" and self.auth_mode == "local":
+            raise ValueError("AUTH_MODE=local is not allowed when APP_ENV=production")
         if not self.clerk_authorized_parties:
             self.clerk_authorized_parties = [self.frontend_origin]
         return self
