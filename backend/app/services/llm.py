@@ -252,9 +252,7 @@ class ChatService:
         history: Sequence[ChatMessage],
         structured: bool = False,
     ) -> list[dict[str, str]]:
-        history_text = "\n".join(
-            f"{turn.role}: {turn.content}" for turn in history[-4:]
-        ).strip()
+        history_text = "\n".join(f"{turn.role}: {turn.content}" for turn in history[-4:]).strip()
         output_instruction = (
             "Return only compact JSON with keys: query and scope. "
             if not structured
@@ -275,8 +273,7 @@ class ChatService:
             {
                 "role": "user",
                 "content": (
-                    f"Recent chat history:\n{history_text or '(none)'}\n\n"
-                    f"User message:\n{message}"
+                    f"Recent chat history:\n{history_text or '(none)'}\n\nUser message:\n{message}"
                 ),
             },
         ]

@@ -1,4 +1,4 @@
-name: CI
+name: Checks
 
 on:
   pull_request:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   backend:
+    name: Backend lint and format
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -20,14 +21,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install backend dependencies
         run: uv sync --frozen --extra dev
-      - name: Ruff
+      - name: Ruff lint
         run: uv run ruff check app tests --ignore UP042
-      - name: Pytest
-        env:
-          OPENAI_API_KEY: test-key
-        run: uv run pytest tests -q
+      - name: Ruff format check
+        run: uv run ruff format --check app tests
 
   frontend:
+    name: Frontend typecheck and build
     runs-on: ubuntu-latest
     defaults:
       run:

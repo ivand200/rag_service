@@ -233,9 +233,7 @@ def test_chat_service_generates_answer_and_session_title_from_async_client() -> 
 def test_chat_service_streams_text_deltas_and_closes_provider_stream() -> None:
     chat_api = FakeStreamingChatCompletionsAPI(
         [
-            SimpleNamespace(
-                choices=[SimpleNamespace(delta=SimpleNamespace(content="Paris "))]
-            ),
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="Paris "))]),
             SimpleNamespace(
                 choices=[
                     SimpleNamespace(
@@ -284,9 +282,7 @@ def test_chat_service_uses_structured_retrieval_plan_parse_contract() -> None:
         client=client,
     )
 
-    result = asyncio.run(
-        service.generate_retrieval_plan(message="Tell me about Paris", history=[])
-    )
+    result = asyncio.run(service.generate_retrieval_plan(message="Tell me about Paris", history=[]))
 
     assert result.query == "Paris capital evidence"
     assert result.broad is True
@@ -398,9 +394,7 @@ def test_chat_service_falls_back_when_structured_parsed_output_is_unusable(
         client=client,
     )
 
-    result = asyncio.run(
-        service.generate_retrieval_plan(message="List all components", history=[])
-    )
+    result = asyncio.run(service.generate_retrieval_plan(message="List all components", history=[]))
 
     assert result.query == "List all components"
     assert result.broad is True
@@ -415,9 +409,7 @@ def test_chat_service_uses_legacy_json_retrieval_plan_when_structured_flag_is_di
         client=client,
     )
 
-    result = asyncio.run(
-        service.generate_retrieval_plan(message="Tell me about Paris", history=[])
-    )
+    result = asyncio.run(service.generate_retrieval_plan(message="Tell me about Paris", history=[]))
 
     assert result.query == "unexpected json planner"
     assert result.broad is True

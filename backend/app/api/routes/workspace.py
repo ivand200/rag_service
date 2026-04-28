@@ -7,11 +7,9 @@ from app.api.dependencies import require_current_user
 from app.api.schemas import ChatMessageRead, DocumentSummary, WorkspaceResponse
 from app.db.session import get_db_session
 from app.services.auth import AuthenticatedUser
-from app.services.workspace import (
-    ensure_workspace,
-    list_workspace_documents,
-    list_workspace_messages,
-)
+from app.services.chat_repository import ChatRepository
+from app.services.document_repository import DocumentRepository
+from app.services.workspace import ensure_workspace
 
 router = APIRouter(prefix="/api/workspace", tags=["workspace"])
 
@@ -22,10 +20,11 @@ async def get_workspace(
     session: AsyncSession = Depends(get_db_session),
 ) -> WorkspaceResponse:
     workspace = await ensure_workspace(session)
-    documents = await list_workspace_documents(session, workspace.id)
-    messages = await list_workspace_messages(
-        session,
-        workspace.id,
+    documents = await DocumentRepository(session).list_workspace_documents(
+        workspace_id=workspace.id,
+    )
+    messages = await ChatRepository(session).list_workspace_messages(
+        workspace_id=workspace.id,
         clerk_user_id=current_user.clerk_user_id,
     )
     document_summaries = [

@@ -11,12 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_storage_service, require_current_user
 from app.api.schemas import DocumentDetail, DocumentListResponse, DocumentSummary
 from app.config import Settings, get_settings
-from app.db.models import Document, DocumentStatus, IngestionJob, JobStatus
+from app.db.models import Document
 from app.db.session import get_db_session
 from app.services.auth import AuthenticatedUser
+from app.services.document_repository import DocumentRepository
 from app.services.observability import bind_log_context, get_logger, log_event
 from app.services.storage import StorageService
-from app.services.workspace import ensure_workspace, list_workspace_documents
+from app.services.workspace import ensure_workspace
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 logger = get_logger(__name__)
@@ -37,7 +38,9 @@ async def list_documents(
     session: AsyncSession = Depends(get_db_session),
 ) -> DocumentListResponse:
     workspace = await ensure_workspace(session)
-    documents = await list_workspace_documents(session, workspace.id)
+    documents = await DocumentRepository(session).list_workspace_documents(
+        workspace_id=workspace.id,
+    )
     return DocumentListResponse(documents=[_to_summary(document) for document in documents])
 
 
@@ -47,7 +50,7 @@ async def get_document(
     _current_user: AuthenticatedUser = Depends(require_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> DocumentDetail:
-    document = await session.get(Document, document_id)
+    document = await DocumentRepository(session).get_document(document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="document not found")
     return _to_detail(document)
@@ -79,25 +82,13 @@ async def upload_document(
     await storage.ensure_bucket()
     await storage.upload_bytes(storage_key, content, file.content_type)
 
-    document = Document(
+    document, job = await DocumentRepository(session).create_document_with_ingestion_job(
         workspace_id=workspace.id,
         filename=file.filename or f"upload-{datetime.utcnow().isoformat()}{suffix}",
         content_type=file.content_type,
         storage_key=storage_key,
-        status=DocumentStatus.pending.value,
         content_hash=content_hash,
     )
-    session.add(document)
-    await session.flush()
-
-    job = IngestionJob(
-        document_id=document.id,
-        status=JobStatus.queued.value,
-        attempt_count=0,
-    )
-    session.add(job)
-    await session.commit()
-    await session.refresh(document)
 
     with bind_log_context(
         request_id=getattr(getattr(request, "state", None), "request_id", None),

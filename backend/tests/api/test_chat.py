@@ -747,9 +747,7 @@ async def test_chat_exchange_embeds_model_generated_retrieval_query(
     client, session_factory = chat_harness
     await _set_chat_services(
         client,
-        embedding_service=FakeEmbeddingService(
-            {"capital France evidence": [1.0] + [0.0] * 1023}
-        ),
+        embedding_service=FakeEmbeddingService({"capital France evidence": [1.0] + [0.0] * 1023}),
         chat_service=FakeChatService(
             "Paris is the capital of France.",
             retrieval_query="capital France evidence",
@@ -793,9 +791,7 @@ async def test_broad_retrieval_plan_uses_expanded_chunk_count(
     )
     await _set_chat_services(
         client,
-        embedding_service=FakeEmbeddingService(
-            {"daisyUI component list": [1.0] + [0.0] * 1023}
-        ),
+        embedding_service=FakeEmbeddingService({"daisyUI component list": [1.0] + [0.0] * 1023}),
         chat_service=ComponentCountingChatService(
             "unused",
             retrieval_query="daisyUI component list",
