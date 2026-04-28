@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install backend dependencies
+        run: uv sync --frozen --extra dev
+      - name: Pytest
+        env:
+          AUTH_MODE: clerk
+          OPENAI_API_KEY: test-key
+        run: uv run pytest tests -q
