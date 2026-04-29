@@ -63,4 +63,26 @@ test.describe('E2E workspace smoke', () => {
       page.getByText(/support an answer to that from the uploaded documents/)
     ).toBeVisible({ timeout: 30_000 })
   })
+
+  test('deletes an uploaded document after inline confirmation', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText('Research Workspace')).toBeVisible()
+
+    const filename = `e2e-delete-${Date.now()}.txt`
+    await page.locator('input[type="file"]').setInputFiles({
+      name: filename,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('This document exists only to verify the delete confirmation flow.')
+    })
+
+    const documentButton = page.getByRole('button', { name: new RegExp(escapeRegExp(filename)) })
+    await expect(documentButton).toBeVisible()
+    await documentButton.click()
+    await page.getByRole('button', { name: 'Delete document' }).click()
+    await expect(page.getByText('Delete permanently?')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+
+    await expect(documentButton).toHaveCount(0)
+  })
 })

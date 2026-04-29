@@ -31,6 +31,7 @@ class S3ClientProtocol(Protocol):
     def create_bucket(self, **kwargs: object) -> object: ...
     def upload_fileobj(self, *args: object, **kwargs: object) -> object: ...
     def get_object(self, **kwargs: object) -> object: ...
+    def delete_object(self, **kwargs: object) -> object: ...
 
 
 class StorageService:
@@ -105,3 +106,13 @@ class StorageService:
             body = cast("dict[str, S3BodyReader]", response)["Body"]
             content = await maybe_await(body.read())
             return cast(bytes, content)
+
+    async def delete_object(self, key: str) -> None:
+        async with self._get_client() as client:
+            try:
+                await maybe_await(client.delete_object(Bucket=self.bucket, Key=key))
+            except ClientError as exc:
+                error_code = exc.response.get("Error", {}).get("Code")
+                if error_code in {"NoSuchKey", "404", "NotFound"}:
+                    return
+                raise

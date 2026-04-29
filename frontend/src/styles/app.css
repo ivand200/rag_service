@@ -478,7 +478,10 @@ button {
 .t-session-chip:focus-visible,
 .t-session-new:focus-visible,
 .t-send:focus-visible,
-.t-retry:focus-visible {
+.t-retry:focus-visible,
+.t-delete-trigger:focus-visible,
+.t-delete-cancel:focus-visible,
+.t-delete-danger:focus-visible {
   outline: 2px solid #2a5c3f;
   outline-offset: 2px;
 }
@@ -602,7 +605,8 @@ button {
 .t-icon-plus,
 .t-icon-spinner,
 .t-icon-send,
-.t-icon-retry {
+.t-icon-retry,
+.t-icon-trash {
   width: 13px;
   height: 13px;
 }
@@ -715,6 +719,77 @@ button {
   color: #8a2828;
   font-size: 11px;
   font-weight: 600;
+}
+
+.t-delete-error {
+  margin: 9px 0 0;
+}
+
+.t-delete-trigger,
+.t-delete-cancel,
+.t-delete-danger {
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.t-delete-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 9px;
+  padding: 5px 9px;
+  border: 1px solid #f0b8b8;
+  background: #fdf0f0;
+  color: #8a2828;
+}
+
+.t-delete-confirm {
+  margin-top: 9px;
+  padding: 8px;
+  border: 1px solid #f0b8b8;
+  border-radius: 7px;
+  background: #fdf0f0;
+}
+
+.t-delete-copy {
+  display: block;
+  color: #8a2828;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.t-delete-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.t-delete-cancel,
+.t-delete-danger {
+  min-height: 25px;
+  padding: 4px 9px;
+}
+
+.t-delete-cancel {
+  border: 1px solid #d4cfc8;
+  background: #fffaf2;
+  color: #5a5450;
+}
+
+.t-delete-danger {
+  border: 1px solid #8a2828;
+  background: #8a2828;
+  color: #fff8f4;
+}
+
+.t-delete-cancel:disabled,
+.t-delete-danger:disabled,
+.t-delete-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .t-empty-state {

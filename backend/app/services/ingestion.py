@@ -3,13 +3,11 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.db.models import Document
 from app.services.chunking import chunk_document
 from app.services.document_repository import DocumentRepository
 from app.services.llm import EmbeddingService
 from app.services.observability import bind_log_context, get_logger, log_event
 from app.services.parsers import parse_document_bytes
-from app.services.retrieval import replace_document_chunks
 from app.services.storage import StorageService
 
 logger = get_logger(__name__)
@@ -76,24 +74,31 @@ async def process_job(
                 )
                 embeddings.extend(batch_embeddings)
 
-            await session.run_sync(
-                lambda sync_session: replace_document_chunks(
-                    sync_session,
-                    sync_session.get(Document, document.id),
-                    chunks,
-                    embeddings,
-                )
+            completed = await repository.finalize_ingestion_success(
+                document_id=document.id,
+                job_id=job.id,
+                chunks=chunks,
+                embeddings=embeddings,
             )
+            if not completed:
+                log_event(logger, "ingestion_target_deleted")
+                return
 
-            await repository.mark_ingestion_ready(document=document, job=job)
             log_event(logger, "ingestion_completed", chunks=len(chunks))
         except Exception as exc:
-            await repository.mark_ingestion_failed_or_retry(
+            updated = await repository.mark_ingestion_failed_or_retry(
                 document=document,
                 job=job,
                 settings=settings,
                 exc=exc,
             )
+            if not updated:
+                log_event(
+                    logger,
+                    "ingestion_target_deleted",
+                    error=str(exc)[:500],
+                )
+                return
             final_failure = job.attempt_count >= settings.ingestion_max_retries
             summary = str(exc)[:500]
             log_event(

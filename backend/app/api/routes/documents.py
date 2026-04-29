@@ -5,7 +5,7 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_storage_service, require_current_user
@@ -54,6 +54,46 @@ async def get_document(
     if document is None:
         raise HTTPException(status_code=404, detail="document not found")
     return _to_detail(document)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    request: Request,
+    document_id: int,
+    _current_user: AuthenticatedUser = Depends(require_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage_service),
+) -> Response:
+    workspace = await ensure_workspace(session)
+    repository = DocumentRepository(session)
+    storage_key = await repository.hard_delete_document(
+        document_id=document_id,
+        workspace_id=workspace.id,
+    )
+    if storage_key is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    with bind_log_context(
+        request_id=getattr(getattr(request, "state", None), "request_id", None),
+        correlation_id=getattr(getattr(request, "state", None), "correlation_id", None),
+        workspace_id=workspace.id,
+        document_id=document_id,
+        storage_key=storage_key,
+    ):
+        log_event(logger, "document_deleted")
+        try:
+            await storage.delete_object(storage_key)
+        except Exception as exc:  # noqa: BLE001 - cleanup is best effort after DB delete.
+            log_event(
+                logger,
+                "document_storage_cleanup_failed",
+                error=type(exc).__name__,
+                detail=str(exc),
+            )
+        else:
+            log_event(logger, "document_storage_cleanup_completed")
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("", response_model=DocumentSummary, status_code=status.HTTP_201_CREATED)

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.config import Settings
-from app.db.models import Document, DocumentStatus, IngestionJob, JobStatus
+from app.db.models import Document, DocumentChunk, DocumentStatus, IngestionJob, JobStatus
+from app.services.chunking import ChunkCandidate
+from app.services.retrieval import replace_document_chunks
 
 try:
     from datetime import UTC
@@ -29,6 +34,31 @@ class DocumentRepository:
 
     async def get_document(self, document_id: int) -> Document | None:
         return await self.session.get(Document, document_id)
+
+    async def hard_delete_document(self, *, document_id: int, workspace_id: int) -> str | None:
+        storage_key = await self.session.scalar(
+            select(Document.storage_key).where(
+                Document.id == document_id,
+                Document.workspace_id == workspace_id,
+            )
+        )
+        if storage_key is None:
+            return None
+
+        await self.session.execute(
+            delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
+        )
+        await self.session.execute(
+            delete(IngestionJob).where(IngestionJob.document_id == document_id)
+        )
+        await self.session.execute(
+            delete(Document).where(
+                Document.id == document_id,
+                Document.workspace_id == workspace_id,
+            )
+        )
+        await self.session.commit()
+        return storage_key
 
     async def create_document_with_ingestion_job(
         self,
@@ -95,15 +125,66 @@ class DocumentRepository:
     async def get_document_for_job(self, job: IngestionJob) -> Document | None:
         return await self.session.get(Document, job.document_id)
 
-    async def mark_ingestion_ready(self, *, document: Document, job: IngestionJob) -> None:
+    async def finalize_ingestion_success(
+        self,
+        *,
+        document_id: int,
+        job_id: int,
+        chunks: Sequence[ChunkCandidate],
+        embeddings: Sequence[list[float]],
+    ) -> bool:
+        target = await self._get_live_ingestion_target(document_id=document_id, job_id=job_id)
+        if target is None:
+            return False
+
+        document, job = target
         now = datetime.now(UTC)
-        document.status = DocumentStatus.ready.value
-        document.error_summary = None
-        job.status = JobStatus.completed.value
-        job.completed_at = now
-        job.last_error = None
-        job.locked_at = None
-        await self.session.commit()
+        try:
+            await self.session.run_sync(
+                lambda sync_session: replace_document_chunks(
+                    sync_session,
+                    document,
+                    chunks,
+                    embeddings,
+                )
+            )
+            document.status = DocumentStatus.ready.value
+            document.error_summary = None
+            job.status = JobStatus.completed.value
+            job.completed_at = now
+            job.last_error = None
+            job.locked_at = None
+            await self.session.commit()
+        except (IntegrityError, StaleDataError):
+            await self.session.rollback()
+            if not await self.ingestion_target_exists(document_id=document_id, job_id=job_id):
+                return False
+            raise
+
+        return True
+
+    async def mark_ingestion_ready(self, *, document: Document, job: IngestionJob) -> bool:
+        target = await self._get_live_ingestion_target(document_id=document.id, job_id=job.id)
+        if target is None:
+            return False
+
+        live_document, live_job = target
+        now = datetime.now(UTC)
+        live_document.status = DocumentStatus.ready.value
+        live_document.error_summary = None
+        live_job.status = JobStatus.completed.value
+        live_job.completed_at = now
+        live_job.last_error = None
+        live_job.locked_at = None
+        try:
+            await self.session.commit()
+        except StaleDataError:
+            await self.session.rollback()
+            if not await self.ingestion_target_exists(document_id=document.id, job_id=job.id):
+                return False
+            raise
+
+        return True
 
     async def mark_ingestion_failed_or_retry(
         self,
@@ -112,18 +193,56 @@ class DocumentRepository:
         job: IngestionJob,
         settings: Settings,
         exc: Exception,
-    ) -> None:
-        summary = str(exc)[:500]
-        final_failure = job.attempt_count >= settings.ingestion_max_retries
+    ) -> bool:
+        target = await self._get_live_ingestion_target(document_id=document.id, job_id=job.id)
+        if target is None:
+            return False
 
-        document.status = (
+        live_document, live_job = target
+        summary = str(exc)[:500]
+        final_failure = live_job.attempt_count >= settings.ingestion_max_retries
+
+        live_document.status = (
             DocumentStatus.failed.value if final_failure else DocumentStatus.pending.value
         )
-        document.error_summary = summary
-        job.status = JobStatus.failed.value if final_failure else JobStatus.queued.value
-        job.last_error = summary
-        job.locked_at = None
+        live_document.error_summary = summary
+        live_job.status = JobStatus.failed.value if final_failure else JobStatus.queued.value
+        live_job.last_error = summary
+        live_job.locked_at = None
         if final_failure:
-            job.completed_at = datetime.now(UTC)
+            live_job.completed_at = datetime.now(UTC)
 
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except StaleDataError:
+            await self.session.rollback()
+            if not await self.ingestion_target_exists(document_id=document.id, job_id=job.id):
+                return False
+            raise
+
+        return True
+
+    async def ingestion_target_exists(self, *, document_id: int, job_id: int) -> bool:
+        return (
+            await self._get_live_ingestion_target(document_id=document_id, job_id=job_id)
+        ) is not None
+
+    async def _get_live_ingestion_target(
+        self,
+        *,
+        document_id: int,
+        job_id: int,
+    ) -> tuple[Document, IngestionJob] | None:
+        statement = (
+            select(Document, IngestionJob)
+            .join(IngestionJob, IngestionJob.document_id == Document.id)
+            .where(Document.id == document_id, IngestionJob.id == job_id)
+        )
+        if self.session.bind and self.session.bind.sync_engine.dialect.name == "postgresql":
+            statement = statement.with_for_update()
+
+        row = (await self.session.execute(statement)).one_or_none()
+        if row is None:
+            return None
+        document, job = row
+        return document, job
