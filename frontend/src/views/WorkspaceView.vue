@@ -31,11 +31,15 @@ const isCreatingSession = ref(false)
 const isLoadingSessions = ref(false)
 const isLoadingHistory = ref(false)
 const isSending = ref(false)
+const deletingDocumentId = ref<number | null>(null)
 const loadError = ref('')
 const uploadError = ref('')
 const uploadSuccess = ref('')
 const sendError = ref('')
 const sessionError = ref('')
+const deleteErrorDocumentId = ref<number | null>(null)
+const deleteError = ref('')
+const locallyDeletedDocumentIds = ref<Set<number>>(new Set())
 
 let historyRequestId = 0
 let streamingAssistantCounter = 0
@@ -56,9 +60,14 @@ const failedCount = computed(() => documents.value.filter((document) => document
 const hasActiveIngestion = computed(() =>
   documents.value.some((document) => document.status === 'pending' || document.status === 'processing')
 )
+
+function withoutLocallyDeletedDocuments(nextDocuments: DocumentSummary[]) {
+  return nextDocuments.filter((document) => !locallyDeletedDocumentIds.value.has(document.id))
+}
+
 function mergeWorkspaceDocuments(payload: WorkspaceResponse) {
   workspace.value = payload
-  documents.value = payload.documents
+  documents.value = withoutLocallyDeletedDocuments(payload.documents)
 }
 
 const activeSession = computed(() =>
@@ -196,10 +205,11 @@ async function refreshDocuments(options: { silent?: boolean } = {}) {
 
   try {
     const payload = await apiClient.listDocuments(await props.getAccessToken())
-    documents.value = payload.documents
+    const nextDocuments = withoutLocallyDeletedDocuments(payload.documents)
+    documents.value = nextDocuments
     uploadError.value = ''
 
-    if (payload.documents.some((document) => document.status === 'pending' || document.status === 'processing')) {
+    if (nextDocuments.some((document) => document.status === 'pending' || document.status === 'processing')) {
       ensurePolling()
     } else {
       stopPolling()
@@ -216,12 +226,17 @@ async function refreshDocuments(options: { silent?: boolean } = {}) {
 async function onUpload(file: File) {
   uploadError.value = ''
   uploadSuccess.value = ''
+  deleteError.value = ''
+  deleteErrorDocumentId.value = null
   isUploading.value = true
 
   try {
     const created = await apiClient.uploadDocument(file, await props.getAccessToken())
     uploadSuccess.value = `${created.filename} uploaded and queued for ingestion.`
-    documents.value = [created, ...documents.value.filter((document) => document.id !== created.id)]
+    documents.value = withoutLocallyDeletedDocuments([
+      created,
+      ...documents.value.filter((document) => document.id !== created.id)
+    ])
     ensurePolling()
     await refreshDocuments()
   } catch (error) {
@@ -232,6 +247,31 @@ async function onUpload(file: File) {
     }
   } finally {
     isUploading.value = false
+  }
+}
+
+async function onDeleteDocument(documentId: number) {
+  if (deletingDocumentId.value !== null) {
+    return
+  }
+
+  deletingDocumentId.value = documentId
+  deleteErrorDocumentId.value = null
+  deleteError.value = ''
+
+  try {
+    await apiClient.deleteDocument(documentId, await props.getAccessToken())
+    locallyDeletedDocumentIds.value = new Set([...locallyDeletedDocumentIds.value, documentId])
+    documents.value = withoutLocallyDeletedDocuments(documents.value)
+
+    if (!hasActiveIngestion.value) {
+      stopPolling()
+    }
+  } catch (error) {
+    deleteErrorDocumentId.value = documentId
+    deleteError.value = error instanceof Error ? error.message : 'Failed to delete document'
+  } finally {
+    deletingDocumentId.value = null
   }
 }
 
@@ -456,10 +496,14 @@ onBeforeUnmount(() => {
           :documents="documents"
           :is-loading="isLoading || isRefreshing"
           :is-uploading="isUploading"
+          :deleting-document-id="deletingDocumentId"
           :upload-error="uploadError"
           :upload-success="uploadSuccess"
+          :delete-error-document-id="deleteErrorDocumentId"
+          :delete-error="deleteError"
           @upload="onUpload"
           @refresh="refreshDocuments"
+          @delete-document="onDeleteDocument"
         />
 
         <ChatPanel

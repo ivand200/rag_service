@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -28,6 +28,7 @@ from app.db.models import (
     Workspace,
 )
 from app.services.chat import claim_next_title_job, process_title_job
+from app.services.document_repository import DocumentRepository
 from app.services.ingestion import claim_next_job, process_job
 from app.worker import main as worker_main
 
@@ -60,6 +61,25 @@ class FakeStorage:
 class FakeEmbeddingService:
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return [[float(index + 1)] * EMBEDDING_VECTOR_DIMENSIONS for index, _ in enumerate(texts)]
+
+
+class DeletingEmbeddingService(FakeEmbeddingService):
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        document_id: int,
+    ) -> None:
+        self.session_factory = session_factory
+        self.document_id = document_id
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        async with self.session_factory() as session:
+            await DocumentRepository(session).hard_delete_document(
+                document_id=self.document_id,
+                workspace_id=SINGLETON_WORKSPACE_ID,
+            )
+        return await super().embed_texts(texts)
 
 
 class FakeChatService:
@@ -263,6 +283,98 @@ async def test_ingestion_failure_marks_document_failed_after_final_attempt(
     assert document is not None and document.status == DocumentStatus.failed.value
     assert job is not None and job.status == JobStatus.failed.value
     assert job is not None and job.completed_at is not None
+
+
+@pytest.mark.anyio
+async def test_ingestion_exits_cleanly_when_claimed_document_is_deleted(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    job_id, document_id, storage_key = await seed_job(session_factory, "removed.txt")
+    settings = build_settings()
+
+    async with session_factory() as claim_session:
+        await claim_next_job(claim_session, settings)
+    async with session_factory() as delete_session:
+        await DocumentRepository(delete_session).hard_delete_document(
+            document_id=document_id,
+            workspace_id=SINGLETON_WORKSPACE_ID,
+        )
+
+    async with session_factory() as process_session:
+        await process_job(
+            process_session,
+            job_id,
+            settings,
+            FakeStorage({storage_key: b"hello world " * 200}),
+            FakeEmbeddingService(),
+        )
+
+    async with session_factory() as verify_session:
+        document = await verify_session.get(Document, document_id)
+        job = await verify_session.get(IngestionJob, job_id)
+
+    assert document is None
+    assert job is None
+
+
+@pytest.mark.anyio
+async def test_ingestion_exits_cleanly_when_claimed_job_is_deleted(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    job_id, document_id, storage_key = await seed_job(session_factory, "jobless.txt")
+    settings = build_settings()
+
+    async with session_factory() as claim_session:
+        await claim_next_job(claim_session, settings)
+    async with session_factory() as delete_session:
+        await delete_session.execute(delete(IngestionJob).where(IngestionJob.id == job_id))
+        await delete_session.commit()
+
+    async with session_factory() as process_session:
+        await process_job(
+            process_session,
+            job_id,
+            settings,
+            FakeStorage({storage_key: b"hello world " * 200}),
+            FakeEmbeddingService(),
+        )
+
+    async with session_factory() as verify_session:
+        document = await verify_session.get(Document, document_id)
+        job = await verify_session.get(IngestionJob, job_id)
+
+    assert document is not None and document.status == DocumentStatus.processing.value
+    assert job is None
+
+
+@pytest.mark.anyio
+async def test_ingestion_does_not_mark_document_ready_when_deleted_during_processing(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    job_id, document_id, storage_key = await seed_job(session_factory, "race.txt")
+    settings = build_settings()
+
+    async with session_factory() as claim_session:
+        await claim_next_job(claim_session, settings)
+
+    async with session_factory() as process_session:
+        await process_job(
+            process_session,
+            job_id,
+            settings,
+            FakeStorage({storage_key: b"hello world " * 200}),
+            DeletingEmbeddingService(session_factory, document_id=document_id),
+        )
+
+    async with session_factory() as verify_session:
+        document = await verify_session.get(Document, document_id)
+        job = await verify_session.get(IngestionJob, job_id)
+        chunk_count = await verify_session.scalar(
+            select(func.count(DocumentChunk.id)).where(DocumentChunk.document_id == document_id)
+        )
+
+    assert document is None
+    assert (job, chunk_count) == (None, 0)
 
 
 @pytest.mark.anyio

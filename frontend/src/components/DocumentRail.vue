@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import type { DocumentSummary } from '../types/workspace'
 
@@ -9,17 +9,22 @@ const props = defineProps<{
   documents: DocumentSummary[]
   isLoading: boolean
   isUploading: boolean
+  deletingDocumentId: number | null
   uploadError: string
   uploadSuccess: string
+  deleteErrorDocumentId: number | null
+  deleteError: string
 }>()
 
 const emit = defineEmits<{
   upload: [file: File]
   refresh: []
+  deleteDocument: [documentId: number]
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const expandedDocumentId = ref<number | null>(null)
+const confirmingDeleteDocumentId = ref<number | null>(null)
 
 const statusConfig: Record<
   StatusKey,
@@ -61,6 +66,7 @@ const sortedDocuments = computed(() =>
     (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
   )
 )
+const hasPendingDelete = computed(() => props.deletingDocumentId !== null)
 
 function openFilePicker() {
   if (!props.isUploading) {
@@ -100,6 +106,34 @@ function statusFor(document: DocumentSummary) {
 
 function toggleDocument(documentId: number) {
   expandedDocumentId.value = expandedDocumentId.value === documentId ? null : documentId
+
+  if (expandedDocumentId.value !== documentId) {
+    confirmingDeleteDocumentId.value = null
+  }
+}
+
+function requestDeleteConfirmation(documentId: number) {
+  if (hasPendingDelete.value) {
+    return
+  }
+
+  confirmingDeleteDocumentId.value = documentId
+}
+
+function cancelDeleteConfirmation() {
+  confirmingDeleteDocumentId.value = null
+}
+
+function confirmDelete(documentId: number) {
+  if (hasPendingDelete.value) {
+    return
+  }
+
+  emit('deleteDocument', documentId)
+}
+
+function isDeleting(documentId: number) {
+  return props.deletingDocumentId === documentId
 }
 
 function formatRelativeAge(value: string) {
@@ -131,6 +165,22 @@ function formatTimestamp(value: string) {
     minute: '2-digit'
   }).format(new Date(value))
 }
+
+watch(
+  () => props.documents.map((document) => document.id),
+  (documentIds) => {
+    if (expandedDocumentId.value !== null && !documentIds.includes(expandedDocumentId.value)) {
+      expandedDocumentId.value = null
+    }
+
+    if (
+      confirmingDeleteDocumentId.value !== null &&
+      !documentIds.includes(confirmingDeleteDocumentId.value)
+    ) {
+      confirmingDeleteDocumentId.value = null
+    }
+  }
+)
 </script>
 
 <template>
@@ -295,6 +345,58 @@ function formatTimestamp(value: string) {
               />
             </svg>
             Refresh status
+          </button>
+
+          <p
+            v-if="deleteErrorDocumentId === document.id && deleteError"
+            class="t-inline-callout t-inline-callout-error t-delete-error"
+          >
+            {{ deleteError }}
+          </p>
+
+          <div
+            v-if="confirmingDeleteDocumentId === document.id || isDeleting(document.id)"
+            class="t-delete-confirm"
+          >
+            <span class="t-delete-copy">Delete permanently?</span>
+            <div class="t-delete-actions">
+              <button
+                class="t-delete-cancel"
+                type="button"
+                :disabled="hasPendingDelete"
+                @click.stop="cancelDeleteConfirmation"
+              >
+                Cancel
+              </button>
+              <button
+                class="t-delete-danger"
+                type="button"
+                :disabled="hasPendingDelete"
+                @click.stop="confirmDelete(document.id)"
+              >
+                {{ isDeleting(document.id) ? 'Deleting...' : 'Delete' }}
+              </button>
+            </div>
+          </div>
+
+          <button
+            v-else
+            class="t-delete-trigger"
+            type="button"
+            :disabled="hasPendingDelete"
+            @click.stop="requestDeleteConfirmation(document.id)"
+          >
+            <svg viewBox="0 0 20 20" class="t-icon-trash" aria-hidden="true">
+              <path
+                d="M7.25 4.25V3.7c0-.66.54-1.2 1.2-1.2h3.1c.66 0 1.2.54 1.2 1.2v.55M4.75 5.5h10.5M6.25 5.5l.55 10.1c.04.72.63 1.27 1.35 1.27h3.7c.72 0 1.31-.55 1.35-1.27l.55-10.1M8.7 8.25v5.5M11.3 8.25v5.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.45"
+              />
+            </svg>
+            Delete document
           </button>
         </div>
       </li>

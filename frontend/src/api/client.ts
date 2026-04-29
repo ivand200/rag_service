@@ -54,6 +54,21 @@ async function request<T>(path: string, init?: RequestInit, authToken?: AuthToke
   return (await response.json()) as T
 }
 
+async function requestNoContent(path: string, init?: RequestInit, authToken?: AuthToken): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(init?.headers ?? {})
+    }
+  })
+
+  if (!response.ok) {
+    throw new ApiError(await readErrorMessage(response), response.status)
+  }
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
   let message = `Request failed with status ${response.status}`
 
@@ -230,6 +245,12 @@ export const apiClient = {
       method: 'POST',
       body: formData,
       headers: {}
+    }, authToken)
+  },
+
+  deleteDocument(documentId: number, authToken?: AuthToken) {
+    return requestNoContent(`/documents/${documentId}`, {
+      method: 'DELETE'
     }, authToken)
   }
 }
