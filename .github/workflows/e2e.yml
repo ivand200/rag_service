@@ -26,29 +26,6 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
-      - name: Create E2E environment
-        run: |
-          cat > .env <<'EOF'
-          APP_ENV=e2e
-          VITE_APP_ENV=e2e
-          FRONTEND_ORIGIN=http://localhost:5173
-          DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/rag_service
-          VITE_API_BASE_URL=/api
-          VITE_CLERK_PUBLISHABLE_KEY=
-          CLERK_JWT_PUBLIC_KEY=
-          CLERK_AUTHORIZED_PARTIES=http://localhost:5173
-          S3_ENDPOINT_URL=http://minio:9000
-          S3_ACCESS_KEY=minioadmin
-          S3_SECRET_KEY=minioadmin
-          S3_BUCKET=rag-service-documents
-          S3_REGION=us-east-1
-          S3_SECURE=false
-          OPENAI_API_KEY=e2e-dummy-key
-          INGESTION_POLL_INTERVAL_SECONDS=1
-          INGESTION_MAX_RETRIES=2
-          RETRIEVAL_TOP_K=3
-          EOF
-
       - name: Start E2E stack
         run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d
 

@@ -9,8 +9,10 @@ services:
 
   backend:
     ports: !reset []
+    env_file: !reset []
     environment:
       APP_ENV: e2e
+      AUTH_MODE: clerk
       FRONTEND_ORIGIN: http://localhost:5173
       CLERK_JWT_PUBLIC_KEY: ""
       CLERK_AUTHORIZED_PARTIES: http://localhost:5173
@@ -20,8 +22,10 @@ services:
       RETRIEVAL_TOP_K: 3
 
   worker:
+    env_file: !reset []
     environment:
       APP_ENV: e2e
+      AUTH_MODE: clerk
       FRONTEND_ORIGIN: http://localhost:5173
       CLERK_JWT_PUBLIC_KEY: ""
       CLERK_AUTHORIZED_PARTIES: http://localhost:5173
