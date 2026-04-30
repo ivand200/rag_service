@@ -1,13 +1,11 @@
 # Product Steering
 
 ## Purpose
-- Build an interview-ready, portfolio-quality RAG service that demonstrates production-minded backend and full-stack engineering.
 - Provide a chat-first document Q&A product for a single shared workspace.
 - Show realistic service boundaries: authentication, document upload, background ingestion, vector retrieval, streaming chat, citations, abstention, persistence, and reproducible local runtime.
 
 ## Users / Actors
 - Signed-in demo users who upload documents and ask grounded questions through the web UI.
-- The project owner, who uses the repo for LinkedIn, portfolio, and technical-interview demonstrations.
 - Clerk, FastAPI, the worker, Postgres/pgvector, object storage, and the model provider as collaborating system actors.
 
 ## Core Workflows

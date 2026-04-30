@@ -11,6 +11,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.config import Settings
 from app.db.models import Document, DocumentChunk, DocumentStatus, IngestionJob, JobStatus
 from app.services.chunking import ChunkCandidate
+from app.services.job_backoff import next_retry_at
 from app.services.retrieval import replace_document_chunks
 
 try:
@@ -91,12 +92,14 @@ class DocumentRepository:
         return document, job
 
     async def claim_next_ingestion_job(self, settings: Settings) -> int | None:
+        now = datetime.now(UTC)
         statement = (
             select(IngestionJob)
             .join(Document)
             .where(IngestionJob.status == JobStatus.queued.value)
             .where(IngestionJob.attempt_count < settings.ingestion_max_retries)
-            .order_by(IngestionJob.created_at)
+            .where(IngestionJob.scheduled_at <= now)
+            .order_by(IngestionJob.scheduled_at, IngestionJob.created_at, IngestionJob.id)
             .limit(1)
         )
         if self.session.bind and self.session.bind.sync_engine.dialect.name == "postgresql":
@@ -110,7 +113,6 @@ class DocumentRepository:
         if document is None:
             return None
 
-        now = datetime.now(UTC)
         job.status = JobStatus.processing.value
         job.locked_at = now
         job.attempt_count += 1
@@ -211,6 +213,11 @@ class DocumentRepository:
         live_job.locked_at = None
         if final_failure:
             live_job.completed_at = datetime.now(UTC)
+        else:
+            live_job.scheduled_at = next_retry_at(
+                attempt_count=live_job.attempt_count,
+                settings=settings,
+            )
 
         try:
             await self.session.commit()

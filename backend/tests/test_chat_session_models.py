@@ -62,8 +62,8 @@ def test_chat_session_schema_links_sessions_title_jobs_and_messages() -> None:
         "ix_chat_session_workspace_id_clerk_user_id_updated_at_id"
     }
     assert {index["name"] for index in inspector.get_indexes("chat_session_title_job")} >= {
-        "ix_chat_session_title_job_status_id"
+        "ix_chat_session_title_job_status_scheduled_at_id"
     }
     assert {index["name"] for index in inspector.get_indexes("ingestion_job")} >= {
-        "ix_ingestion_job_status_created_at_id"
+        "ix_ingestion_job_status_scheduled_at_created_at_id"
     }

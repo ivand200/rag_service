@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     upload_max_bytes: int = 25 * 1024 * 1024
     ingestion_max_retries: int = 3
     ingestion_poll_interval_seconds: int = 5
+    job_retry_initial_delay_seconds: int = 30
+    job_retry_max_delay_seconds: int = 10 * 60
     chunk_target_tokens: int = 800
     chunk_overlap_tokens: int = 120
     chunk_max_batch_size: int = 10
@@ -119,6 +121,13 @@ class Settings(BaseSettings):
             raise ValueError("Value must be positive")
         return value
 
+    @field_validator("job_retry_initial_delay_seconds", "job_retry_max_delay_seconds")
+    @classmethod
+    def validate_non_negative_ints(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("Value cannot be negative")
+        return value
+
     @field_validator("chunk_overlap_tokens")
     @classmethod
     def validate_chunk_overlap(cls, value: int) -> int:
@@ -132,6 +141,11 @@ class Settings(BaseSettings):
             raise ValueError("CHUNK_TARGET_TOKENS must be greater than CHUNK_OVERLAP_TOKENS")
         if self.app_env.lower() == "production" and self.auth_mode == "local":
             raise ValueError("AUTH_MODE=local is not allowed when APP_ENV=production")
+        if self.job_retry_max_delay_seconds < self.job_retry_initial_delay_seconds:
+            raise ValueError(
+                "JOB_RETRY_MAX_DELAY_SECONDS must be greater than or equal to "
+                "JOB_RETRY_INITIAL_DELAY_SECONDS"
+            )
         if not self.clerk_authorized_parties:
             self.clerk_authorized_parties = [self.frontend_origin]
         return self

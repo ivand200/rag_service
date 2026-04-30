@@ -126,3 +126,13 @@ def test_settings_parse_structured_retrieval_plan_flag(
     settings = Settings(openai_api_key="test-key", dashscope_api_key="")
 
     assert settings.enable_structured_retrieval_plan is expected
+
+
+def test_settings_reject_retry_backoff_cap_below_initial_delay() -> None:
+    with pytest.raises(ValueError, match="JOB_RETRY_MAX_DELAY_SECONDS"):
+        Settings(
+            openai_api_key="test-key",
+            dashscope_api_key="",
+            job_retry_initial_delay_seconds=30,
+            job_retry_max_delay_seconds=10,
+        )

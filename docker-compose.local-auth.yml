@@ -1,0 +1,26 @@
+name: rag-service-local-auth
+
+services:
+  postgres:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  backend:
+    ports: !reset []
+    environment:
+      AUTH_MODE: local
+
+  worker:
+    environment:
+      AUTH_MODE: local
+
+  frontend:
+    ports: !override
+      - "${LOCAL_AUTH_FRONTEND_PORT:-5175}:80"
+    build:
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_AUTH_MODE: local
+        VITE_CLERK_PUBLISHABLE_KEY: ""

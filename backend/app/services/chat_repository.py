@@ -16,6 +16,7 @@ from app.db.models import (
     MessageRole,
     Workspace,
 )
+from app.services.job_backoff import next_retry_at
 
 try:
     from datetime import UTC
@@ -248,11 +249,13 @@ class ChatRepository:
         await self.complete_title_job(job)
 
     async def claim_next_title_job(self, settings: Settings) -> int | None:
+        now = datetime.now(UTC)
         statement = (
             select(ChatSessionTitleJob)
             .where(ChatSessionTitleJob.status == JobStatus.queued.value)
             .where(ChatSessionTitleJob.attempt_count < settings.ingestion_max_retries)
-            .order_by(ChatSessionTitleJob.created_at)
+            .where(ChatSessionTitleJob.scheduled_at <= now)
+            .order_by(ChatSessionTitleJob.scheduled_at, ChatSessionTitleJob.id)
             .limit(1)
         )
         if self.session.bind and self.session.bind.sync_engine.dialect.name == "postgresql":
@@ -263,7 +266,7 @@ class ChatRepository:
             return None
 
         job.status = JobStatus.processing.value
-        job.locked_at = datetime.now(UTC)
+        job.locked_at = now
         job.attempt_count += 1
         await self.session.commit()
         return job.id
@@ -308,6 +311,8 @@ class ChatRepository:
         job.locked_at = None
         if final_failure:
             job.completed_at = datetime.now(UTC)
+        else:
+            job.scheduled_at = next_retry_at(attempt_count=job.attempt_count, settings=settings)
 
         await self.session.commit()
 

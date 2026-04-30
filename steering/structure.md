@@ -5,11 +5,9 @@
 - `frontend/`: Vue SPA source, routing, components, styles, E2E tests, Vite config, and production container assets.
 - `.github/workflows/`: CI, Docker build validation, and Playwright E2E workflows.
 - `docs/`: user-facing local development, testing, deployment, troubleshooting, and demo guidance.
-- `specs/`: detailed durable product, tech, and structure specs plus focused reference assets.
 - `steering/`: compact project-level guidance for future tasks.
+- `steering/frontend_reference/`: visual reference assets for frontend styling direction.
 - `tasks/`: task-level requirements, designs, context notes, and implementation plans.
-- `cv/`: portfolio/resume collateral, separate from product runtime code.
-- `portable-spec-driven-kit/`, `qwen_spec/`, and root `rag_service*.md`: reference or historical planning material, not the default home for new product code.
 
 ## Entry Points
 - `backend/app/main.py`: FastAPI app factory, middleware, lifespan, workspace bootstrap, and router registration.
@@ -49,4 +47,4 @@
 - Frontend API helpers and shared types: `frontend/src/api/` and `frontend/src/types/`.
 - Frontend routing: `frontend/src/router/`.
 - Shared frontend styles and tokens: `frontend/src/styles/`, imported through `frontend/src/styles.css`.
-- Durable detailed specs: `specs/`; compact steering: `steering/`; task artifacts: `tasks/`.
+- Compact steering: `steering/`; task artifacts: `tasks/`; user-facing project docs: `docs/`.
