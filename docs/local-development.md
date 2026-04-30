@@ -8,7 +8,7 @@ This guide covers the local runtime for RAG Service. The project is a single-wor
 - `frontend/`: Vue 3 + Vite single-page app served by nginx in production mode.
 - `docker-compose.yml`: local multi-service development runtime.
 - `.env.example`: environment variable template for backend, frontend, storage, auth, and provider configuration.
-- `specs/`: durable product, tech, and structure steering docs.
+- `steering/`: durable product, tech, and structure steering docs.
 - `tasks/`: task-level design notes and implementation artifacts.
 
 ## Prerequisites

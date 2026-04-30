@@ -156,7 +156,7 @@ See [docs/testing.md](./docs/testing.md) for the full validation guide.
 - [Testing](./docs/testing.md): backend, frontend, Docker, CI, E2E, and RAG quality checks.
 - [Deployment](./docs/deployment.md): manual cloud deployment shape for frontend, backend, worker, Postgres, and object storage.
 - [Troubleshooting](./docs/troubleshooting.md): common local failures and how to diagnose them.
-- [Demo script](./docs/demo-script.md): portfolio walkthrough, talking points, and future video notes.
+- [Demo script](./docs/demo-script.md): walkthrough, talking points, and future video notes.
 
 ## Project References
 

@@ -1,6 +1,6 @@
 # Demo Script
 
-This script is designed for portfolio, LinkedIn, and technical interview walkthroughs.
+This script is designed for technical interview walkthroughs and demos.
 
 ## Goal
 
