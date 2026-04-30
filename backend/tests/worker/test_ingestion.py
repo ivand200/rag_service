@@ -123,6 +123,7 @@ async def seed_job(
     filename: str,
     *,
     created_at: datetime | None = None,
+    scheduled_at: datetime | None = None,
 ) -> tuple[int, int, str]:
     async with session_factory() as session:
         workspace = await session.get(Workspace, SINGLETON_WORKSPACE_ID)
@@ -150,6 +151,8 @@ async def seed_job(
         )
         if created_at is not None:
             job.created_at = created_at
+        if scheduled_at is not None:
+            job.scheduled_at = scheduled_at
         session.add(job)
         await session.commit()
         return job.id, document.id, document.storage_key
@@ -159,6 +162,7 @@ async def seed_title_job(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     title: str = "New session",
+    scheduled_at: datetime | None = None,
 ) -> tuple[int, int]:
     async with session_factory() as session:
         workspace = await session.get(Workspace, SINGLETON_WORKSPACE_ID)
@@ -192,6 +196,8 @@ async def seed_title_job(
             status=JobStatus.queued.value,
             attempt_count=0,
         )
+        if scheduled_at is not None:
+            title_job.scheduled_at = scheduled_at
         session.add(title_job)
         await session.commit()
         return title_job.id, chat_session.id
@@ -255,6 +261,31 @@ async def test_ingestion_failure_requeues_before_final_failure(
     assert document is not None and document.status == DocumentStatus.pending.value
     assert job is not None and job.status == JobStatus.queued.value
     assert job is not None and job.last_error is not None
+
+
+@pytest.mark.anyio
+async def test_retryable_ingestion_failure_is_not_claimable_until_scheduled(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    job_id, _, storage_key = await seed_job(session_factory, "broken.pdf")
+    settings = build_settings()
+
+    async with session_factory() as claim_session:
+        await claim_next_job(claim_session, settings)
+
+    async with session_factory() as process_session:
+        await process_job(
+            process_session,
+            job_id,
+            settings,
+            FakeStorage({storage_key: b"%PDF-1.4 invalid"}),
+            FakeEmbeddingService(),
+        )
+
+    async with session_factory() as retry_claim_session:
+        retry_claim = await claim_next_job(retry_claim_session, settings)
+
+    assert retry_claim is None
 
 
 @pytest.mark.anyio
@@ -405,6 +436,32 @@ async def test_claims_queued_ingestion_backlog_in_created_order(
 
 
 @pytest.mark.anyio
+async def test_claims_due_ingestion_job_before_future_scheduled_job(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    now = datetime.now(UTC)
+    future_job_id, _, _ = await seed_job(
+        session_factory,
+        "future.txt",
+        created_at=now,
+        scheduled_at=now + timedelta(minutes=5),
+    )
+    due_job_id, _, _ = await seed_job(
+        session_factory,
+        "due.txt",
+        created_at=now + timedelta(seconds=1),
+        scheduled_at=now - timedelta(seconds=1),
+    )
+    settings = build_settings()
+
+    async with session_factory() as claim_session:
+        claim = await claim_next_job(claim_session, settings)
+
+    assert claim == due_job_id
+    assert claim != future_job_id
+
+
+@pytest.mark.anyio
 async def test_title_job_success_updates_session_title_and_completes_job(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -439,7 +496,11 @@ async def test_title_job_failure_requeues_then_marks_failed_after_final_attempt(
         raise RuntimeError(f"provider error for {first_user_message}")
 
     chat_service.generate_session_title = raise_error  # type: ignore[method-assign]
-    settings = build_settings(ingestion_max_retries=2)
+    settings = build_settings(
+        ingestion_max_retries=2,
+        job_retry_initial_delay_seconds=0,
+        job_retry_max_delay_seconds=0,
+    )
 
     async with session_factory() as first_claim_session:
         first_claim = await claim_next_title_job(first_claim_session, settings)
@@ -467,6 +528,31 @@ async def test_title_job_failure_requeues_then_marks_failed_after_final_attempt(
     assert second_claim == job_id
     assert final_job is not None and final_job.status == JobStatus.failed.value
     assert final_chat_session is not None and final_chat_session.title == "New session"
+
+
+@pytest.mark.anyio
+async def test_retryable_title_job_failure_is_not_claimable_until_scheduled(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    job_id, _ = await seed_title_job(session_factory)
+    chat_service = FakeChatService()
+
+    async def raise_error(*, first_user_message: str) -> str:
+        raise RuntimeError(f"provider error for {first_user_message}")
+
+    chat_service.generate_session_title = raise_error  # type: ignore[method-assign]
+    settings = build_settings(ingestion_max_retries=2)
+
+    async with session_factory() as claim_session:
+        await claim_next_title_job(claim_session, settings)
+
+    async with session_factory() as process_session:
+        await process_title_job(process_session, job_id, settings, chat_service)
+
+    async with session_factory() as retry_claim_session:
+        retry_claim = await claim_next_title_job(retry_claim_session, settings)
+
+    assert retry_claim is None
 
 
 @pytest.mark.anyio

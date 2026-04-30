@@ -1,6 +1,6 @@
 # RAG Service
 
-RAG Service is a production-minded retrieval-augmented generation app built as a portfolio and interview project. Signed-in users upload `.txt`, `.md`, or `.pdf` documents, a worker ingests them asynchronously, and the chat UI answers questions using grounded context from the shared ready-document corpus.
+RAG Service is a production-ready RAG application. Signed-in users upload `.txt`, `.md`, or `.pdf` documents, a worker ingests them asynchronously, and the chat UI answers questions using grounded context from the shared ready-document corpus.
 
 The project demonstrates the shape of a real service, not a toy RAG script: authenticated browser flows, FastAPI service boundaries, background ingestion, `pgvector` retrieval, object storage, streaming chat responses, citations, abstention when evidence is weak, and Docker-based local reproducibility.
 
@@ -160,6 +160,6 @@ See [docs/testing.md](./docs/testing.md) for the full validation guide.
 
 ## Project References
 
-- [Product Spec](./specs/product.md)
-- [Tech Spec](./specs/tech.md)
-- [Structure Spec](./specs/structure.md)
+- [Product Steering](./steering/product.md)
+- [Tech Steering](./steering/tech.md)
+- [Structure Steering](./steering/structure.md)

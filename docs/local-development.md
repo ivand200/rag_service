@@ -159,7 +159,7 @@ Document ingestion:
 - Supported extensions are `.txt`, `.md`, and `.pdf`.
 - Uploads are stored in object storage first.
 - The worker updates document state through `pending -> processing -> ready` or `failed`.
-- Failed jobs are retried up to `INGESTION_MAX_RETRIES`.
+- Failed jobs are retried up to `INGESTION_MAX_RETRIES` after a scheduled backoff delay bounded by `JOB_RETRY_INITIAL_DELAY_SECONDS` and `JOB_RETRY_MAX_DELAY_SECONDS`.
 - Documents are not searchable until ingestion completes successfully.
 
 Retrieval and answer generation:

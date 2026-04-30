@@ -8,7 +8,7 @@
 
 ## Key Services / Infrastructure
 - FastAPI exposes health, workspace, document, and chat APIs.
-- A long-running polling worker handles document ingestion jobs and chat-session title jobs without a separate queue broker.
+- A long-running polling worker handles document ingestion jobs and chat-session title jobs with Postgres-backed claiming, scheduled retry backoff, and no separate queue broker.
 - Clerk supplies browser authentication and backend bearer-token validation for protected routes.
 - OpenAI supplies embeddings and chat completions through the OpenAI-compatible provider client; compatible legacy providers remain possible through configuration.
 - Docker-based startup runs Alembic migrations before the backend API starts.
@@ -28,7 +28,8 @@
 ## Related Steering Docs
 - [Product Steering](./product.md)
 - [Structure Steering](./structure.md)
-- Detailed baseline specs live in [../specs/](../specs/).
+- Task-level requirements, designs, and context notes live in [../tasks/](../tasks/).
+- Historical root `rag_service*.md` notes are reference material, not the default source for new work.
 
 ## Technical Constraints
 - The database must support the `vector` extension and match the configured embedding dimensionality.

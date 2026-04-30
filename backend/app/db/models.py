@@ -26,6 +26,13 @@ from app.db.constants import (
 )
 from app.db.types import EmbeddingVector
 
+try:
+    from datetime import UTC
+except ImportError:  # pragma: no cover - Python < 3.11 compatibility
+    from datetime import timezone
+
+    UTC = timezone.utc  # noqa: UP017
+
 
 class Base(DeclarativeBase):
     pass
@@ -90,7 +97,15 @@ class Document(TimestampMixin, Base):
 
 class IngestionJob(TimestampMixin, Base):
     __tablename__ = "ingestion_job"
-    __table_args__ = (Index("ix_ingestion_job_status_created_at_id", "status", "created_at", "id"),)
+    __table_args__ = (
+        Index(
+            "ix_ingestion_job_status_scheduled_at_created_at_id",
+            "status",
+            "scheduled_at",
+            "created_at",
+            "id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(
@@ -99,6 +114,11 @@ class IngestionJob(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default=JobStatus.queued.value)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -150,7 +170,12 @@ class ChatSession(TimestampMixin, Base):
 class ChatSessionTitleJob(TimestampMixin, Base):
     __tablename__ = "chat_session_title_job"
     __table_args__ = (
-        Index("ix_chat_session_title_job_status_id", "status", "id"),
+        Index(
+            "ix_chat_session_title_job_status_scheduled_at_id",
+            "status",
+            "scheduled_at",
+            "id",
+        ),
         UniqueConstraint("session_id"),
     )
 
@@ -159,6 +184,11 @@ class ChatSessionTitleJob(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default=JobStatus.queued.value)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
